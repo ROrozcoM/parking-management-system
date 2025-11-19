@@ -1,0 +1,110 @@
+# ===========================
+# ENVIRONMENT VARIABLES
+# ===========================
+.env
+.env.local
+.env.*.local
+*.pickle
+oauth_credentials.json
+
+# ===========================
+# PYTHON
+# ===========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ===========================
+# NODE / REACT
+# ===========================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+build/
+.pnp
+.pnp.js
+
+# ===========================
+# DOCKER
+# ===========================
+postgres_data/
+backup-data/
+
+# ===========================
+# IDE / EDITORS
+# ===========================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# ===========================
+# OS
+# ===========================
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# ===========================
+# LOGS
+# ===========================
+*.log
+logs/
+*.log.*
+
+# ===========================
+# BACKUPS
+# ===========================
+*.sql
+*.dump
+backups/
+*.backup
+
+# ===========================
+# TESTING
+# ===========================
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+
+# ===========================
+# OTROS
+# ===========================
+.cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
