@@ -3,7 +3,7 @@ databases:
     databaseName: parking_db
     user: autocaravanascordoba
     plan: standard-2-2023
-    ipAllowList: []-256
+    ipAllowList: []
 
 services:
   # Backend API (FastAPI)
