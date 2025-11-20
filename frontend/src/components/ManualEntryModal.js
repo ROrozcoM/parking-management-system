@@ -4,6 +4,7 @@ import { Modal, Button, Form, Alert } from 'react-bootstrap';
 
 function ManualEntryModal({ show, onHide, onSuccess }) {
   const [licensePlate, setLicensePlate] = useState('');
+  const [country, setCountry] = useState('Spain');
   const [vehicleType, setVehicleType] = useState('Caravan');
   const [spotType, setSpotType] = useState('A');
   const [loading, setLoading] = useState(false);
@@ -11,6 +12,69 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
   const [blacklistInfo, setBlacklistInfo] = useState(null);
   const [checkingBlacklist, setCheckingBlacklist] = useState(false);
   const [forceCheckIn, setForceCheckIn] = useState(false);
+
+  // Lista completa de países
+  const countries = [
+    'Spain',
+    'France',
+    'Germany',
+    'Italy',
+    'Portugal',
+    'United Kingdom',
+    'Netherlands',
+    'Belgium',
+    'Switzerland',
+    'Austria',
+    'Poland',
+    'Czech Republic',
+    'Sweden',
+    'Norway',
+    'Denmark',
+    'Finland',
+    'Ireland',
+    'Luxembourg',
+    'Greece',
+    'Hungary',
+    'Romania',
+    'Bulgaria',
+    'Croatia',
+    'Slovenia',
+    'Slovakia',
+    'Serbia',
+    'Lithuania',
+    'Latvia',
+    'Estonia',
+    'Malta',
+    'Cyprus',
+    'Iceland',
+    'Albania',
+    'Bosnia and Herzegovina',
+    'Montenegro',
+    'North Macedonia',
+    'Moldova',
+    'Ukraine',
+    'Belarus',
+    'Russia',
+    'Turkey',
+    'Morocco',
+    'Algeria',
+    'Tunisia',
+    'United States',
+    'Canada',
+    'Mexico',
+    'Brazil',
+    'Argentina',
+    'Chile',
+    'Australia',
+    'New Zealand',
+    'Japan',
+    'China',
+    'South Korea',
+    'India',
+    'Israel',
+    'South Africa',
+    'Other'
+  ];
 
   const handleLicensePlateChange = async (value) => {
     setLicensePlate(value);
@@ -58,11 +122,12 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
       setLoading(true);
       setError(null);
       
-      await staysAPI.createManualEntry(licensePlate, vehicleType, spotType);
+      await staysAPI.createManualEntry(licensePlate, vehicleType, spotType, country);
       onSuccess();
       
       // Reset form
       setLicensePlate('');
+      setCountry('Spain');
       setVehicleType('Caravan');
       setSpotType('A');
       setBlacklistInfo(null);
@@ -77,6 +142,7 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
 
   const handleClose = () => {
     setLicensePlate('');
+    setCountry('Spain');
     setVehicleType('Caravan');
     setSpotType('A');
     setBlacklistInfo(null);
@@ -145,6 +211,21 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
               required
               placeholder="Ej: ABC1234"
             />
+          </Form.Group>
+
+          <Form.Group className="mb-3">
+            <Form.Label>Country</Form.Label>
+            <Form.Select 
+              value={country} 
+              onChange={(e) => setCountry(e.target.value)}
+              disabled={loading}
+            >
+              {countries.map(countryName => (
+                <option key={countryName} value={countryName}>
+                  {countryName}
+                </option>
+              ))}
+            </Form.Select>
           </Form.Group>
           
           <Form.Group className="mb-3">

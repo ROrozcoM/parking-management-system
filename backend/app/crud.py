@@ -3,6 +3,7 @@ from sqlalchemy import func, and_
 from app import models, schemas
 from typing import List, Optional
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from passlib.context import CryptContext
 import subprocess
 
@@ -111,7 +112,7 @@ def check_out_stay(db: Session, stay_id: int, final_price: float, user_id: int):
     
     # Update stay
     stay.status = models.StayStatus.COMPLETED
-    stay.check_out_time = datetime.now()
+    stay.check_out_time = datetime.now(ZoneInfo("Europe/Madrid"))
     stay.final_price = final_price
     
     # Free up parking spot
@@ -170,9 +171,16 @@ def create_manual_stay(db: Session, stay_data: dict, user_id: int):
     if not vehicle:
         vehicle_data = {
             "license_plate": stay_data["license_plate"],
-            "vehicle_type": stay_data["vehicle_type"]
+            "vehicle_type": stay_data["vehicle_type"],
+            "country": stay_data.get("country", "Spain")  # Añadir country con valor por defecto
         }
         vehicle = create_vehicle(db, schemas.VehicleCreate(**vehicle_data))
+    else:
+        # Si el vehículo ya existe, actualizar el country si se proporcionó uno nuevo
+        if "country" in stay_data and stay_data["country"]:
+            vehicle.country = stay_data["country"]
+            db.commit()
+            db.refresh(vehicle)
     
     # Find an available parking spot of the specified type
     spot = db.query(models.ParkingSpot).filter(
@@ -190,8 +198,8 @@ def create_manual_stay(db: Session, stay_data: dict, user_id: int):
         vehicle_id=vehicle.id,
         parking_spot_id=spot.id,
         status=models.StayStatus.ACTIVE,
-        check_in_time=datetime.now(),
-        detection_time=datetime.now(),  # Manual entry, so detection time is now
+        check_in_time=datetime.now(ZoneInfo("Europe/Madrid")),
+        detection_time=datetime.now(ZoneInfo("Europe/Madrid")),  # Manual entry, so detection time is now
         user_id=user_id
     )
     
@@ -220,6 +228,7 @@ def create_history_log(db: Session, log: schemas.HistoryLogCreate, user_id: int)
     db_log = models.HistoryLog(
         stay_id=log.stay_id,
         action=log.action,
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),  # ← AÑADIR ESTO
         details=log.details,
         user_id=user_id
     )
@@ -331,7 +340,7 @@ def register_prepayment(db: Session, stay_id: int, amount: float, payment_method
     log_details = {
         "amount": amount,
         "payment_method": payment_method,
-        "timestamp": datetime.now().isoformat()
+        "timestamp": datetime.now(ZoneInfo("Europe/Madrid")).isoformat()
     }
     create_history_log(db, schemas.HistoryLogCreate(
         stay_id=stay_id,
@@ -360,7 +369,7 @@ def checkout_with_prepayment(db: Session, stay_id: int, final_price: float, user
     
     # Actualizar stay
     stay.status = models.StayStatus.COMPLETED
-    stay.check_out_time = datetime.now()
+    stay.check_out_time = datetime.now(ZoneInfo("Europe/Madrid"))
     stay.final_price = final_price
     
     # Actualizar estado de pago
@@ -542,7 +551,7 @@ def mark_stay_as_sinpa(db: Session, stay_id: int, notes: Optional[str], user_id:
     if not stay.final_price:
         # Calcular días de estancia
         check_in = stay.check_in_time
-        check_out = datetime.now()
+        check_out = datetime.now(ZoneInfo("Europe/Madrid"))
         days = (check_out - check_in).days
         if days == 0:
             days = 1  # Mínimo 1 día
@@ -553,7 +562,7 @@ def mark_stay_as_sinpa(db: Session, stay_id: int, notes: Optional[str], user_id:
     
     # Marcar el stay
     stay.status = models.StayStatus.COMPLETED
-    stay.check_out_time = datetime.now()
+    stay.check_out_time = datetime.now(ZoneInfo("Europe/Madrid"))
     stay.payment_status = models.PaymentStatus.UNPAID
     
     # Liberar plaza
@@ -624,7 +633,7 @@ def resolve_blacklist_entry(db: Session, blacklist_id: int, user_id: int):
     if entry.stay_id:
         log_details = {
             "blacklist_id": blacklist_id,
-            "resolved_date": datetime.now().isoformat()
+            "resolved_date": datetime.now(ZoneInfo("Europe/Madrid")).isoformat()
         }
         create_history_log(db, schemas.HistoryLogCreate(
             stay_id=entry.stay_id,
@@ -694,7 +703,7 @@ def get_revenue_timeline(db: Session, days: int = 30):
     """
     Obtiene ingresos diarios de los últimos X días
     """
-    cutoff_date = datetime.now() - timedelta(days=days)
+    cutoff_date = datetime.now(ZoneInfo("Europe/Madrid")) - timedelta(days=days)
     
     results = db.query(
         func.date(models.Stay.check_out_time).label('date'),
@@ -852,7 +861,7 @@ def get_monthly_comparison(db: Session, months: int = 6):
     """
     Comparación mensual de ingresos
     """
-    cutoff_date = datetime.now() - timedelta(days=months*30)
+    cutoff_date = datetime.now(ZoneInfo("Europe/Madrid")) - timedelta(days=months*30)
     
     results = db.query(
         extract('year', models.Stay.check_out_time).label('year'),
@@ -901,6 +910,372 @@ def get_weekday_distribution(db: Session):
         for r in results
     ]
 
+
+# ============================================================================
+# FUNCIONES PARA SISTEMA DE CAJA
+# ============================================================================
+
+def get_active_cash_session(db: Session):
+    """Obtiene la sesión de caja activa (si existe)"""
+    return db.query(models.CashSession).filter(
+        models.CashSession.status == models.CashSessionStatus.OPEN
+    ).first()
+
+
+def open_cash_session(db: Session, initial_amount: float, user_id: int):
+    """Abre una nueva sesión de caja"""
+    # Verificar que no haya otra sesión abierta
+    existing = get_active_cash_session(db)
+    if existing:
+        raise ValueError("Ya hay una sesión de caja abierta")
+    
+    session = models.CashSession(
+        initial_amount=initial_amount,
+        opened_by_user_id=user_id,
+        status=models.CashSessionStatus.OPEN
+    )
+    
+    db.add(session)
+    db.commit()
+    db.refresh(session)
+    
+    # Crear transacción inicial
+    initial_transaction = models.CashTransaction(
+        cash_session_id=session.id,
+        transaction_type=models.TransactionType.INITIAL,
+        amount_due=initial_amount,
+        payment_method=models.PaymentMethod.CASH,
+        user_id=user_id,
+        notes="Apertura de caja"
+    )
+    db.add(initial_transaction)
+    db.commit()
+    
+    return session
+
+
+def close_cash_session(db: Session, session_id: int, actual_final_amount: float, 
+                       notes: Optional[str], user_id: int):
+    """Cierra una sesión de caja"""
+    session = db.query(models.CashSession).filter(
+        models.CashSession.id == session_id
+    ).first()
+    
+    if not session:
+        raise ValueError("Sesión no encontrada")
+    
+    if session.status == models.CashSessionStatus.CLOSED:
+        raise ValueError("La sesión ya está cerrada")
+    
+    # Calcular el importe esperado
+    expected = calculate_expected_amount(db, session_id)
+    
+    session.closed_at = datetime.now(ZoneInfo("Europe/Madrid"))
+    session.closed_by_user_id = user_id
+    session.expected_final_amount = expected
+    session.actual_final_amount = actual_final_amount
+    session.difference = actual_final_amount - expected
+    session.status = models.CashSessionStatus.CLOSED
+    session.notes = notes
+    
+    db.commit()
+    db.refresh(session)
+    
+    return session
+
+
+def calculate_expected_amount(db: Session, session_id: int) -> float:
+    """Calcula el importe esperado en caja"""
+    session = db.query(models.CashSession).filter(
+        models.CashSession.id == session_id
+    ).first()
+    
+    if not session:
+        return 0.0
+    
+    # Inicial
+    expected = session.initial_amount
+    
+    # Sumar ingresos en efectivo
+    cash_in = db.query(func.sum(models.CashTransaction.amount_due)).filter(
+        and_(
+            models.CashTransaction.cash_session_id == session_id,
+            models.CashTransaction.transaction_type.in_([
+                models.TransactionType.CHECKOUT,
+                models.TransactionType.PREPAYMENT
+            ]),
+            models.CashTransaction.payment_method == models.PaymentMethod.CASH
+        )
+    ).scalar() or 0.0
+    
+    expected += cash_in
+    
+    # Restar retiros
+    withdrawals = db.query(func.sum(models.CashTransaction.amount_due)).filter(
+        and_(
+            models.CashTransaction.cash_session_id == session_id,
+            models.CashTransaction.transaction_type == models.TransactionType.WITHDRAWAL
+        )
+    ).scalar() or 0.0
+    
+    expected -= withdrawals
+    
+    return expected
+
+
+def get_cash_session_summary(db: Session, session_id: int):
+    """Obtiene el resumen de una sesión de caja"""
+    session = db.query(models.CashSession).filter(
+        models.CashSession.id == session_id
+    ).first()
+    
+    if not session:
+        return None
+    
+    # Total ingresos en efectivo
+    cash_in = db.query(func.sum(models.CashTransaction.amount_due)).filter(
+        and_(
+            models.CashTransaction.cash_session_id == session_id,
+            models.CashTransaction.transaction_type.in_([
+                models.TransactionType.CHECKOUT,
+                models.TransactionType.PREPAYMENT
+            ]),
+            models.CashTransaction.payment_method == models.PaymentMethod.CASH
+        )
+    ).scalar() or 0.0
+    
+    # Total retiros
+    withdrawals = db.query(func.sum(models.CashTransaction.amount_due)).filter(
+        and_(
+            models.CashTransaction.cash_session_id == session_id,
+            models.CashTransaction.transaction_type == models.TransactionType.WITHDRAWAL
+        )
+    ).scalar() or 0.0
+    
+    # Transacciones pendientes
+    pending_count = db.query(func.count(models.Stay.id)).filter(
+        and_(
+            models.Stay.status == models.StayStatus.COMPLETED,
+            models.Stay.cash_registered == False,
+            models.Stay.check_out_time >= session.opened_at
+        )
+    ).scalar() or 0
+    
+    # Obtener username del que abrió
+    user = db.query(models.User).filter(models.User.id == session.opened_by_user_id).first()
+    username = user.username if user else "Unknown"
+    
+    return {
+        "id": session.id,
+        "opened_at": session.opened_at,
+        "opened_by_username": username,
+        "initial_amount": session.initial_amount,
+        "total_cash_in": cash_in,
+        "total_withdrawals": withdrawals,
+        "expected_amount": session.initial_amount + cash_in - withdrawals,
+        "pending_transactions_count": pending_count
+    }
+
+
+def register_withdrawal(db: Session, session_id: int, amount: float, 
+                       notes: Optional[str], user_id: int):
+    """Registra un retiro de caja"""
+    session = get_active_cash_session(db)
+    
+    if not session or session.id != session_id:
+        raise ValueError("No hay sesión de caja activa")
+    
+    transaction = models.CashTransaction(
+        cash_session_id=session_id,
+        transaction_type=models.TransactionType.WITHDRAWAL,
+        amount_due=amount,
+        payment_method=models.PaymentMethod.CASH,
+        user_id=user_id,
+        notes=notes
+    )
+    
+    db.add(transaction)
+    db.commit()
+    db.refresh(transaction)
+    
+    return transaction
+
+
+def get_pending_transactions(db: Session):
+    """Obtiene todas las transacciones pendientes de registrar en caja"""
+    pending = []
+    total = 0.0
+    
+    # 1. PREPAYMENTS pendientes (stays ACTIVOS con prepago no registrado)
+    prepayments = db.query(models.Stay).filter(
+        and_(
+            models.Stay.status == models.StayStatus.ACTIVE,
+            models.Stay.prepaid_amount.isnot(None),
+            models.Stay.prepayment_cash_registered == False
+        )
+    ).order_by(models.Stay.check_in_time.desc()).all()
+    
+    for stay in prepayments:
+        user = db.query(models.User).filter(models.User.id == stay.user_id).first()
+        username = user.username if user else "Unknown"
+        
+        pending.append({
+            "stay_id": stay.id,
+            "license_plate": stay.vehicle.license_plate,
+            "transaction_type": "prepayment",
+            "amount": stay.prepaid_amount,
+            "timestamp": stay.check_in_time,  # Usar check_in_time para prepayments
+            "user_name": username,
+            "is_prepayment": True  # Flag para identificar
+        })
+        
+        total += stay.prepaid_amount
+    
+    # 2. CHECKOUTS pendientes (stays COMPLETADOS no registrados en caja)
+    checkouts = db.query(models.Stay).filter(
+        and_(
+            models.Stay.status == models.StayStatus.COMPLETED,
+            models.Stay.cash_registered == False,
+            models.Stay.final_price.isnot(None)
+        )
+    ).order_by(models.Stay.check_out_time.desc()).all()
+    
+    for stay in checkouts:
+        user = db.query(models.User).filter(models.User.id == stay.user_id).first()
+        username = user.username if user else "Unknown"
+        
+        # Calcular el importe a cobrar (restando prepago si existe Y ya está registrado)
+        amount_due = stay.final_price
+        if stay.prepaid_amount and stay.prepayment_cash_registered:
+            amount_due = max(0, stay.final_price - stay.prepaid_amount)
+        
+        pending.append({
+            "stay_id": stay.id,
+            "license_plate": stay.vehicle.license_plate,
+            "transaction_type": "checkout",
+            "amount": amount_due,
+            "timestamp": stay.check_out_time,
+            "user_name": username,
+            "is_prepayment": False,
+            "has_prepayment": stay.prepaid_amount is not None,
+            "prepaid_amount": stay.prepaid_amount if stay.prepaid_amount else 0
+        })
+        
+        total += amount_due
+    
+    return {
+        "pending": pending,
+        "total_amount": total
+    }
+
+
+def register_pending_transaction(db: Session, stay_id: int, payment_method: str,
+                                 amount_paid: float, user_id: int):
+    """Registra en caja una transacción pendiente"""
+    stay = get_stay(db, stay_id)
+    
+    if not stay:
+        raise ValueError("Stay no encontrado")
+    
+    # Verificar que hay sesión activa
+    session = get_active_cash_session(db)
+    if not session:
+        raise ValueError("No hay sesión de caja activa")
+    
+    # Determinar si es prepayment o checkout
+    is_prepayment = stay.status == models.StayStatus.ACTIVE and stay.prepaid_amount is not None
+    
+    if is_prepayment:
+        # CASO 1: Registrando un PREPAYMENT
+        if stay.prepayment_cash_registered:
+            raise ValueError("Este prepayment ya fue registrado en caja")
+        
+        amount_due = stay.prepaid_amount
+        transaction_type = models.TransactionType.PREPAYMENT
+        
+    else:
+        # CASO 2: Registrando un CHECKOUT
+        if stay.cash_registered:
+            raise ValueError("Este checkout ya fue registrado en caja")
+        
+        # Calcular importe debido (restar prepago si ya está registrado)
+        amount_due = stay.final_price
+        if stay.prepaid_amount and stay.prepayment_cash_registered:
+            amount_due = max(0, stay.final_price - stay.prepaid_amount)
+        
+        transaction_type = models.TransactionType.CHECKOUT
+    
+    # Calcular cambio
+    change_given = 0.0
+    if payment_method == models.PaymentMethod.CASH.value:
+        change_given = amount_paid - amount_due
+        if change_given < 0:
+            raise ValueError("El importe pagado no puede ser menor al precio")
+    
+    # Crear transacción de caja
+    transaction = models.CashTransaction(
+        cash_session_id=session.id,
+        transaction_type=transaction_type,
+        stay_id=stay_id,
+        amount_due=amount_due,
+        amount_paid=amount_paid if payment_method == models.PaymentMethod.CASH.value else amount_due,
+        change_given=change_given if payment_method == models.PaymentMethod.CASH.value else 0,
+        payment_method=models.PaymentMethod(payment_method),
+        user_id=user_id
+    )
+    
+    db.add(transaction)
+    
+    # Marcar como registrado según el caso
+    if is_prepayment:
+        stay.prepayment_cash_registered = True
+    else:
+        stay.cash_registered = True
+        stay.payment_method = models.PaymentMethod(payment_method)
+        stay.amount_paid = amount_paid
+        stay.change_given = change_given
+    
+    db.commit()
+    db.refresh(transaction)
+    
+    return transaction
+
+
+def get_cash_transactions(db: Session, session_id: int):
+    """Obtiene todas las transacciones de una sesión de caja"""
+    transactions = db.query(models.CashTransaction).filter(
+        models.CashTransaction.cash_session_id == session_id
+    ).order_by(models.CashTransaction.timestamp.desc()).all()
+    
+    result = []
+    for tx in transactions:
+        # Obtener datos adicionales
+        license_plate = None
+        if tx.stay_id:
+            stay = db.query(models.Stay).filter(models.Stay.id == tx.stay_id).first()
+            if stay:
+                license_plate = stay.vehicle.license_plate
+        
+        user = db.query(models.User).filter(models.User.id == tx.user_id).first()
+        username = user.username if user else "Unknown"
+        
+        result.append({
+            "id": tx.id,
+            "cash_session_id": tx.cash_session_id,
+            "timestamp": tx.timestamp,
+            "transaction_type": tx.transaction_type,
+            "stay_id": tx.stay_id,
+            "amount_due": tx.amount_due,
+            "amount_paid": tx.amount_paid,
+            "change_given": tx.change_given,
+            "payment_method": tx.payment_method,
+            "user_id": tx.user_id,
+            "notes": tx.notes,
+            "license_plate": license_plate,
+            "username": username
+        })
+    
+    return result
 
 
 

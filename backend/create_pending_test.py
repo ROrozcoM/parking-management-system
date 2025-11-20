@@ -9,6 +9,7 @@ Uso:
 import sys
 import os
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 # Añadir el directorio app al path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'app'))
@@ -27,9 +28,9 @@ def create_pending_vehicles():
         
         # Datos de vehículos de prueba
         test_vehicles = [
-            {"plate": "TEST001", "type": "Caravan", "brand": "Hobby", "country": "ES"},
-            {"plate": "TEST002", "type": "Motorhome", "brand": "Fiat", "country": "FR"},
-            {"plate": "TEST003", "type": "Camper", "brand": "VW", "country": "DE"},
+            {"plate": "TEST004", "type": "Caravan", "brand": "Hobby", "country": "Spain"},
+            {"plate": "TEST005", "type": "Motorhome", "brand": "Fiat", "country": "France"},
+            {"plate": "TEST006", "type": "Camper", "brand": "VW", "country": "Poland"},
         ]
         
         for v_data in test_vehicles:
@@ -63,7 +64,7 @@ def create_pending_vehicles():
                 stay = models.Stay(
                     vehicle_id=vehicle.id,
                     status=models.StayStatus.PENDING,
-                    detection_time=datetime.now() - timedelta(minutes=5),
+                    detection_time=datetime.now(ZoneInfo("Europe/Madrid")) - timedelta(minutes=5),
                     payment_status=models.PaymentStatus.PENDING
                 )
                 db.add(stay)

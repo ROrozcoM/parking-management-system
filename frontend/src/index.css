@@ -403,7 +403,7 @@ body {
 }
 
 .vehicle-type::before {
-  content: "🚙";
+  content: "🌎";
 }
 
 .spot-info::before {

@@ -2,9 +2,15 @@ from sqlalchemy import Column, Integer, String, Boolean, DateTime, ForeignKey, E
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from datetime import datetime
+from zoneinfo import ZoneInfo
 import enum
 
 Base = declarative_base()
+
+# Helper function para timezone de Madrid
+def madrid_now():
+    return datetime.now(ZoneInfo("Europe/Madrid"))
 
 class SpotType(str, enum.Enum):
     A = "A"
@@ -22,7 +28,12 @@ class PaymentStatus(str, enum.Enum):
     PENDING = "pending"
     PREPAID = "prepaid"
     PAID = "paid"
-    UNPAID = "unpaid"  # ← NUEVO: Para sinpas
+    UNPAID = "unpaid"
+
+class PaymentMethod(str, enum.Enum):
+    CASH = "cash"
+    CARD = "card"
+    TRANSFER = "transfer"
 
 class UserRole(str, enum.Enum):
     ADMIN = "admin"
@@ -49,7 +60,7 @@ class Vehicle(Base):
     vehicle_type = Column(String)
     brand = Column(String, nullable=True)
     country = Column(String, nullable=True)
-    is_blacklisted = Column(Boolean, default=False)  # Para vehículos que solo pasan
+    is_blacklisted = Column(Boolean, default=False)
     
     # Relationships
     stays = relationship("Stay", back_populates="vehicle")
@@ -72,16 +83,23 @@ class Stay(Base):
     id = Column(Integer, primary_key=True, index=True)
     vehicle_id = Column(Integer, ForeignKey("vehicles.id"))
     parking_spot_id = Column(Integer, ForeignKey("parking_spots.id"), nullable=True)
-    detection_time = Column(DateTime, default=func.now())
-    check_in_time = Column(DateTime, nullable=True)
-    check_out_time = Column(DateTime, nullable=True)
+    detection_time = Column(DateTime(timezone=True), default=madrid_now)
+    check_in_time = Column(DateTime(timezone=True), nullable=True)
+    check_out_time = Column(DateTime(timezone=True), nullable=True)
     status = Column(Enum(StayStatus), default=StayStatus.PENDING)
     final_price = Column(Float, nullable=True)
     payment_status = Column(Enum(PaymentStatus), default=PaymentStatus.PENDING)
     prepaid_amount = Column(Float, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     
-    # Relationships
+    # Campos para sistema de caja
+    payment_method = Column(Enum(PaymentMethod), nullable=True)
+    amount_paid = Column(Float, nullable=True)
+    change_given = Column(Float, nullable=True)
+    cash_registered = Column(Boolean, default=False)
+    prepayment_cash_registered = Column(Boolean, default=False)  # ← AÑADIR ESTE
+    
+    # Relationships (siempre al final)
     vehicle = relationship("Vehicle", back_populates="stays")
     parking_spot = relationship("ParkingSpot", back_populates="stays")
     user = relationship("User", back_populates="stays")
@@ -93,7 +111,7 @@ class HistoryLog(Base):
     id = Column(Integer, primary_key=True, index=True)
     stay_id = Column(Integer, ForeignKey("stays.id"))
     action = Column(String)
-    timestamp = Column(DateTime, default=func.now())
+    timestamp = Column(DateTime(timezone=True), default=madrid_now)  # ← TIMEZONE TRUE
     details = Column(JSON, nullable=True)
     user_id = Column(Integer, ForeignKey("users.id"))
     
@@ -101,19 +119,15 @@ class HistoryLog(Base):
     stay = relationship("Stay", back_populates="history_logs")
     user = relationship("User", back_populates="history_logs")
 
-# ============================================================================
-# NUEVA TABLA: BLACKLIST (Lista negra de morosos)
-# ============================================================================
-
 class Blacklist(Base):
     __tablename__ = "blacklist"
     
     id = Column(Integer, primary_key=True, index=True)
     vehicle_id = Column(Integer, ForeignKey("vehicles.id"))
-    license_plate = Column(String, index=True)  # Por si se borra el vehículo
+    license_plate = Column(String, index=True)
     reason = Column(String, default="sinpa")
     amount_owed = Column(Float)
-    incident_date = Column(DateTime, default=func.now())
+    incident_date = Column(DateTime(timezone=True), default=madrid_now)  # ← TIMEZONE TRUE
     stay_id = Column(Integer, ForeignKey("stays.id"), nullable=True)
     notes = Column(String, nullable=True)
     resolved = Column(Boolean, default=False)
@@ -121,3 +135,72 @@ class Blacklist(Base):
     # Relationships
     vehicle = relationship("Vehicle", back_populates="blacklist_entries")
     stay = relationship("Stay")
+
+# ============================================================================
+# AÑADE ESTAS CLASES AL FINAL DE TU models.py (después de Blacklist)
+# ============================================================================
+
+class PaymentMethod(str, enum.Enum):
+    CASH = "cash"
+    CARD = "card"
+    TRANSFER = "transfer"
+
+class CashSessionStatus(str, enum.Enum):
+    OPEN = "open"
+    CLOSED = "closed"
+
+class TransactionType(str, enum.Enum):
+    CHECKOUT = "checkout"
+    PREPAYMENT = "prepayment"
+    WITHDRAWAL = "withdrawal"
+    ADJUSTMENT = "adjustment"
+    INITIAL = "initial"
+
+class CashSession(Base):
+    __tablename__ = "cash_sessions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    opened_at = Column(DateTime(timezone=True), default=madrid_now)
+    closed_at = Column(DateTime(timezone=True), nullable=True)
+    opened_by_user_id = Column(Integer, ForeignKey("users.id"))
+    closed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    initial_amount = Column(Float)  # Importe inicial
+    expected_final_amount = Column(Float, nullable=True)  # Calculado
+    actual_final_amount = Column(Float, nullable=True)  # Real al cerrar
+    difference = Column(Float, nullable=True)  # Descuadre
+    
+    status = Column(Enum(CashSessionStatus), default=CashSessionStatus.OPEN)
+    notes = Column(String, nullable=True)
+    
+    # Relationships
+    opened_by = relationship("User", foreign_keys=[opened_by_user_id])
+    closed_by = relationship("User", foreign_keys=[closed_by_user_id])
+    transactions = relationship("CashTransaction", back_populates="session")
+
+class CashTransaction(Base):
+    __tablename__ = "cash_transactions"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    cash_session_id = Column(Integer, ForeignKey("cash_sessions.id"))
+    timestamp = Column(DateTime(timezone=True), default=madrid_now)
+    
+    transaction_type = Column(Enum(TransactionType))
+    
+    # Relación con Stay
+    stay_id = Column(Integer, ForeignKey("stays.id"), nullable=True)
+    
+    # Importes
+    amount_due = Column(Float)
+    amount_paid = Column(Float, nullable=True)
+    change_given = Column(Float, nullable=True)
+    
+    payment_method = Column(Enum(PaymentMethod))
+    
+    user_id = Column(Integer, ForeignKey("users.id"))
+    notes = Column(String, nullable=True)
+    
+    # Relationships
+    session = relationship("CashSession", back_populates="transactions")
+    stay = relationship("Stay", foreign_keys=[stay_id])  # ← ESPECIFICAR foreign_keys
+    user = relationship("User")

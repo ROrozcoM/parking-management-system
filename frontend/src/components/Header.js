@@ -47,7 +47,13 @@ function Header() {
             to="/history"
             className={`nav-link ${activeLink === '/history' ? 'active' : ''}`}
           >
-            History
+            Historial
+          </Link>
+          <Link
+            to="/cash"
+            className={`nav-link ${activeLink === '/cash' ? 'active' : ''}`}
+          >
+            💰 Caja
           </Link>
           
           {/* Enlace de Analytics - Solo visible para admins */}

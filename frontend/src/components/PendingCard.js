@@ -59,7 +59,7 @@ function PendingCard({ refreshData }) {
   return (
     <div className="card">
       <div className="card-header">
-        <h2>Pending Stays</h2>
+        <h2>Entradas Pendientes</h2>
         <button 
           className="btn btn-refresh"
           onClick={fetchPendingStays}
@@ -70,14 +70,14 @@ function PendingCard({ refreshData }) {
       </div>
       <div className="card-body">
         {pendingStays.length === 0 ? (
-          <p>No pending stays</p>
+          <p>No hay entradas pendientes</p>
         ) : (
           <div className="stay-list">
             {pendingStays.map(stay => (
               <div key={stay.id} className="stay-item">
                 <div className="stay-info">
                   <div className="license-plate">{stay.vehicle.license_plate}</div>
-                  <div className="vehicle-type">{stay.vehicle.vehicle_type}</div>
+                  <div className="vehicle-type">{stay.vehicle.country}</div>
                   <div className="detection-time">
                     {new Date(stay.detection_time).toLocaleString()}
                   </div>
@@ -93,7 +93,7 @@ function PendingCard({ refreshData }) {
                     className="btn btn-discard"
                     onClick={() => handleDiscardClick(stay)}
                   >
-                    Discard
+                    Descartar
                   </button>
                 </div>
               </div>

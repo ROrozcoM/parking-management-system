@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy import desc, and_, or_, func
 from typing import List, Optional
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from app.database import get_db
 from app import models, schemas
 from app.dependencies import get_current_active_user
@@ -57,7 +58,7 @@ async def history_logs(
         )
     elif days:
         # Last N days
-        cutoff_date = datetime.now() - timedelta(days=days)
+        cutoff_date = datetime.now(ZoneInfo("Europe/Madrid")) - timedelta(days=days)
         query = query.filter(models.HistoryLog.timestamp >= cutoff_date)
     
     # Action filtering
@@ -105,7 +106,7 @@ async def history_stats(
 ):
     """Get statistics for history logs"""
     
-    cutoff_date = datetime.now() - timedelta(days=days)
+    cutoff_date = datetime.now(ZoneInfo("Europe/Madrid")) - timedelta(days=days)
     
     # Count by action type
     action_counts = db.query(

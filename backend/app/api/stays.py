@@ -81,13 +81,15 @@ async def create_manual_entry(
     license_plate: str = Query(..., min_length=1),
     vehicle_type: str = Query(..., min_length=1),
     spot_type: models.SpotType = Query(...),
+    country: str = Query(..., min_length=1),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
     stay_data = {
         "license_plate": license_plate,
         "vehicle_type": vehicle_type,
-        "spot_type": spot_type
+        "spot_type": spot_type,
+        "country": country
     }
     stay = create_manual_stay(db, stay_data, current_user.id)
     if not stay:
@@ -101,6 +103,7 @@ async def create_manual_entry(
 async def prepay_stay(
     stay_id: int,
     amount: float = Query(..., description="Prepaid amount"),
+    payment_method: str = Query("cash", description="Payment method"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
@@ -109,16 +112,20 @@ async def prepay_stay(
         raise HTTPException(status_code=404, detail="Stay not found")
     
     # Actualizar prepago
-    stay.prepaid = True
     stay.prepaid_amount = amount
-    stay.prepaid_time = datetime.now()
+    stay.payment_status = models.PaymentStatus.PREPAID
+    stay.prepayment_cash_registered = False  # ← NUEVO: Marca como pendiente para caja
     
     # Crear log en history_logs
     history_log = models.HistoryLog(
         stay_id=stay_id,
         action="Prepayment received",
-        timestamp=datetime.now(),
-        details={"amount": amount, "prepaid_at": datetime.now().isoformat()},
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+        details={
+            "amount": amount, 
+            "payment_method": payment_method,
+            "prepaid_at": datetime.now(ZoneInfo("Europe/Madrid")).isoformat()
+        },
         user_id=current_user.id
     )
     db.add(history_log)
@@ -127,8 +134,8 @@ async def prepay_stay(
     db.refresh(stay)
     
     return {
+        "success": True,
         "message": "Prepayment recorded", 
         "stay_id": stay_id, 
-        "amount": amount,
-        "prepaid_time": stay.prepaid_time
+        "amount": amount
     }

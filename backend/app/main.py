@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.database import engine, get_db
 from app import models
-from app.api import auth, stays, dashboard, history
+from app.api import auth, stays, dashboard, history, cash
 from app.crud import register_prepayment, checkout_with_prepayment, print_ticket
 from app.crud import check_blacklist, mark_stay_as_sinpa, get_all_blacklist, resolve_blacklist_entry
 from app.dependencies import get_current_active_user
@@ -39,6 +39,7 @@ app.include_router(auth.router, prefix="/api")
 app.include_router(stays.router, prefix="/api")
 app.include_router(dashboard.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
+app.include_router(cash.router, prefix="/api")
 
 @app.get("/")
 async def root():

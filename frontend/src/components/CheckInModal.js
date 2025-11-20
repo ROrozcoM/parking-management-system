@@ -71,7 +71,7 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
   return (
     <Modal show={show} onHide={handleClose} centered size="lg">
       <Modal.Header closeButton>
-        <Modal.Title>🚗 Check-in Vehicle</Modal.Title>
+        <Modal.Title>Check-in Pendiente</Modal.Title>
       </Modal.Header>
       <Modal.Body>
         {/* ALERTA DE LISTA NEGRA */}
@@ -130,6 +130,12 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
               {stay.vehicle.license_plate}
             </span>
           </div>
+          <div className="mb-2">
+            <strong>Country:</strong>{' '}
+            <span style={{ color: 'var(--secondary-color)' }}>
+              {stay.vehicle.country}
+            </span>
+          </div>
           <div>
             <strong>Vehicle Type:</strong>{' '}
             <span style={{ color: 'var(--secondary-color)' }}>
@@ -140,7 +146,7 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
         
         <Form onSubmit={handleSubmit}>
           <Form.Group className="mb-3">
-            <Form.Label style={{ fontWeight: 600 }}>Select Parking Spot Type</Form.Label>
+            <Form.Label style={{ fontWeight: 600 }}>Seleccionar tipo de plaza</Form.Label>
             <Form.Select 
               value={spotType} 
               onChange={(e) => setSpotType(e.target.value)}
@@ -151,9 +157,9 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
                 borderWidth: '2px'
               }}
             >
-              <option value="A">🅰️ Type A - Standard</option>
-              <option value="B">🅱️ Type B - Compact</option>
-              <option value="C">©️ Type C - Large</option>
+              <option value="A">🅰️ Tipo A - Standard</option>
+              <option value="B">🅱️ Tipo B - Compact</option>
+              <option value="C">©️ Tipo C - Large</option>
               <option value="Special">⭐ Special - Reserved</option>
             </Form.Select>
           </Form.Group>

@@ -12,6 +12,7 @@ import sys
 import pickle
 import subprocess
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 # Google Drive con OAuth
@@ -109,7 +110,7 @@ class GoogleDriveService:
     def delete_old_files(self, folder_id, days):
         """Eliminar archivos antiguos de Google Drive"""
         try:
-            cutoff_date = datetime.now() - timedelta(days=days)
+            cutoff_date = datetime.now(ZoneInfo("Europe/Madrid")) - timedelta(days=days)
             cutoff_str = cutoff_date.isoformat() + 'Z'
             
             query = f"'{folder_id}' in parents and createdTime < '{cutoff_str}' and trashed=false"
@@ -133,7 +134,7 @@ def create_db_backup():
     """Crear backup de PostgreSQL"""
     print("\n📦 Creando backup de base de datos...")
     
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(ZoneInfo("Europe/Madrid")).strftime("%Y%m%d_%H%M%S")
     filename = f"backup_{timestamp}.sql"
     filepath = DB_BACKUP_DIR / filename
     
@@ -178,7 +179,7 @@ def cleanup_local_backups():
     """Eliminar backups locales antiguos"""
     print("\n🧹 Limpiando backups locales antiguos...")
     
-    cutoff_date = datetime.now() - timedelta(days=LOCAL_RETENTION_DAYS)
+    cutoff_date = datetime.now(ZoneInfo("Europe/Madrid")) - timedelta(days=LOCAL_RETENTION_DAYS)
     deleted = 0
     
     for backup_file in DB_BACKUP_DIR.glob("backup_*.sql"):
@@ -217,7 +218,7 @@ def export_monthly_excel():
     
     try:
         # Mes pasado
-        today = datetime.now()
+        today = datetime.now(ZoneInfo("Europe/Madrid"))
         first_day_current_month = today.replace(day=1)
         last_day_prev_month = first_day_current_month - timedelta(days=1)
         first_day_prev_month = last_day_prev_month.replace(day=1)
@@ -331,7 +332,7 @@ def main():
     print("=" * 60)
     print("🔄 SISTEMA DE BACKUPS AUTOMÁTICOS")
     print("=" * 60)
-    print(f"Fecha: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Fecha: {datetime.now(ZoneInfo("Europe/Madrid")).strftime('%Y-%m-%d %H:%M:%S')}")
     
     # 1. Crear backup de BD
     backup_file = create_db_backup()
@@ -353,7 +354,7 @@ def main():
     cleanup_local_backups()
     
     # 4. Exportación mensual (solo el día 1)
-    if datetime.now().day == 1:
+    if datetime.now(ZoneInfo("Europe/Madrid")).day == 1:
         excel_file = export_monthly_excel()
         if excel_file and drive.service:
             drive.upload_file(excel_file, drive.excel_folder_id)

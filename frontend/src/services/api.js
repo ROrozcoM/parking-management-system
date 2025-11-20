@@ -89,12 +89,13 @@ export const staysAPI = {
     return response.data;
   },
   
-  createManualEntry: async (licensePlate, vehicleType, spotType) => {
+  createManualEntry: async (licensePlate, vehicleType, spotType, country = 'Spain') => {
     const response = await api.post('/stays/manual', null, {
       params: {
         license_plate: licensePlate,
         vehicle_type: vehicleType,
-        spot_type: spotType
+        spot_type: spotType,
+        country: country
       }
     });
     return response.data;
@@ -196,4 +197,70 @@ export const historyAPI = {
     });
     return response.data;
   },
+};
+
+// ============================================================================
+// FUNCIONES PARA EL FLUJO DE CAJA
+// ============================================================================
+
+// Cash API
+export const cashAPI = {
+  // Obtener sesión activa
+  getActiveSession: async () => {
+    const response = await api.get('/cash/active-session');
+    return response.data;
+  },
+
+  // Abrir caja
+  openSession: async (initialAmount) => {
+    const response = await api.post('/cash/open-session', {
+      initial_amount: initialAmount
+    });
+    return response.data;
+  },
+
+  // Cerrar caja
+  closeSession: async (sessionId, actualFinalAmount, notes) => {
+    const response = await api.post(`/cash/close-session/${sessionId}`, {
+      actual_final_amount: actualFinalAmount,
+      notes: notes
+    });
+    return response.data;
+  },
+
+  // Obtener transacciones pendientes
+  getPendingTransactions: async () => {
+    const response = await api.get('/cash/pending-transactions');
+    return response.data;
+  },
+
+  // Registrar transacción pendiente
+  registerPending: async (stayId, paymentMethod, amountPaid) => {
+    const response = await api.post(`/cash/register-pending/${stayId}`, {
+      payment_method: paymentMethod,
+      amount_paid: amountPaid
+    });
+    return response.data;
+  },
+
+  // Registrar retiro
+  registerWithdrawal: async (amount, notes) => {
+    const response = await api.post('/cash/withdrawal', {
+      amount: amount,
+      notes: notes
+    });
+    return response.data;
+  },
+
+  // Obtener transacciones de una sesión
+  getTransactions: async (sessionId) => {
+    const response = await api.get(`/cash/transactions/${sessionId}`);
+    return response.data;
+  },
+
+  // Obtener detalles de una sesión
+  getSession: async (sessionId) => {
+    const response = await api.get(`/cash/session/${sessionId}`);
+    return response.data;
+  }
 };

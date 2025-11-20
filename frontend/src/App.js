@@ -7,6 +7,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import History from './pages/History';
 import Analytics from './pages/Analytics';
+import CashRegister from './pages/CashRegister';
 import './index.css';
 
 function AppRoutes() {
@@ -34,6 +35,10 @@ function AppRoutes() {
           <Route
             path="/analytics"
             element={currentUser ? <Analytics /> : <Navigate to="/login" />}
+          />
+          <Route
+            path="/cash"
+            element={currentUser ? <CashRegister /> : <Navigate to="/login" />}
           />
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>

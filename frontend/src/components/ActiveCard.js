@@ -83,12 +83,12 @@ function ActiveCard({ refreshData }) {
   return (
     <div className="card">
       <div className="card-header">
-        <h2>Active Stays</h2>
+        <h2>Entradas Activas</h2>
         <button 
           className="btn btn-primary"
           onClick={handleAddManualEntryClick}
         >
-          Add Manual Entry
+          Entrada Manual
         </button>
       </div>
       <div className="card-body">
@@ -103,7 +103,7 @@ function ActiveCard({ refreshData }) {
                     <div className="license-plate">{stay.vehicle.license_plate}</div>
                     {getPaymentStatusBadge(stay.payment_status)}
                   </div>
-                  <div className="vehicle-type">{stay.vehicle.vehicle_type}</div>
+                  <div className="vehicle-type">{stay.vehicle.country}</div>
                   <div className="spot-info">
                     {stay.parking_spot ? `${stay.parking_spot.spot_type} - ${stay.parking_spot.spot_number}` : 'No spot assigned'}
                   </div>

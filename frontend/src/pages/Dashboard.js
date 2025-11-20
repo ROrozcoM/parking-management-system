@@ -36,19 +36,19 @@ function Dashboard() {
       {dashboardData && (
         <div className="stats-container">
           <div className="stat-card">
-            <h3>Total Spots</h3>
+            <h3>Total Plazas</h3>
             <p className="stat-value">{dashboardData.total_spots}</p>
           </div>
           <div className="stat-card">
-            <h3>Occupied Spots</h3>
+            <h3>Plazas Ocupadas</h3>
             <p className="stat-value">{dashboardData.occupied_spots}</p>
           </div>
           <div className="stat-card">
-            <h3>Available Spots</h3>
+            <h3>Plazas Libres</h3>
             <p className="stat-value">{dashboardData.available_spots}</p>
           </div>
           <div className="stat-card">
-            <h3>Occupancy Rate</h3>
+            <h3>% Ocupación</h3>
             <p className="stat-value">
               {dashboardData.total_spots > 0 
                 ? Math.round((dashboardData.occupied_spots / dashboardData.total_spots) * 100)
