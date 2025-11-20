@@ -2,14 +2,14 @@ databases:
   - name: parking-db
     databaseName: parking_db
     user: autocaravanascordoba
-    plan: starter
+    plan: standard
 
 services:
   # Backend API (FastAPI)
   - type: web
     name: parking-backend
     runtime: docker
-    plan: starter
+    plan: standard
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /
@@ -51,7 +51,7 @@ services:
   - type: web
     name: parking-frontend
     runtime: docker
-    plan: starter
+    plan: standard
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
     envVars:
