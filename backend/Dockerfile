@@ -27,4 +27,8 @@ RUN chmod +x /app/init_db.sh \
 RUN mkdir -p /app/backups
 
 # El CMD ejecuta init_db.sh, setup_cron.sh y luego uvicorn
-CMD bash -c "/app/init_db.sh && bash /app/setup_cron.sh && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+#CMD bash -c "/app/init_db.sh && bash /app/setup_cron.sh && uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+# El CMD ejecuta init_db.sh, setup_cron.sh y luego uvicorn
+# Usa $PORT para compatibilidad con Render (default 8000 para local)
+CMD bash -c "/app/init_db.sh && bash /app/setup_cron.sh && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
