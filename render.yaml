@@ -2,7 +2,7 @@ databases:
   - name: parking-db
     databaseName: parking_db
     user: autocaravanascordoba
-    plan: basic-1gb
+    plan: free
     ipAllowList:
       - source: 0.0.0.0/0
         description: allow all
@@ -12,14 +12,14 @@ services:
   - type: web
     name: parking-backend
     runtime: docker
-    plan: standard
+    plan: starter
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /
     disk:
       name: backup-data
       mountPath: /app/backups
-      sizeGB: 10
+      sizeGB: 1
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -54,7 +54,7 @@ services:
   - type: web
     name: parking-frontend
     runtime: docker
-    plan: standard
+    plan: starter
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
     envVars:
