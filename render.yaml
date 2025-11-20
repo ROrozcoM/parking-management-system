@@ -2,15 +2,17 @@ databases:
   - name: parking-db
     databaseName: parking_db
     user: autocaravanascordoba
-    plan: standard-2-2023
-    ipAllowList: []
+    plan: basic-1gb
+    ipAllowList:
+      - source: 0.0.0.0/0
+        description: allow all
 
 services:
   # Backend API (FastAPI)
   - type: web
     name: parking-backend
     runtime: docker
-    plan: starter
+    plan: standard
     dockerfilePath: ./backend/Dockerfile
     dockerContext: ./backend
     healthCheckPath: /
@@ -52,7 +54,7 @@ services:
   - type: web
     name: parking-frontend
     runtime: docker
-    plan: starter
+    plan: standard
     dockerfilePath: ./frontend/Dockerfile
     dockerContext: ./frontend
     envVars:
