@@ -53,7 +53,7 @@ function Header() {
             to="/cash"
             className={`nav-link ${activeLink === '/cash' ? 'active' : ''}`}
           >
-            💰 Caja
+            Caja
           </Link>
           
           {/* Enlace de Analytics - Solo visible para admins */}
@@ -71,7 +71,7 @@ function Header() {
           {currentUser ? (
             <>
               <span className="username">
-                {currentUser.username}
+                {currentUser.username.charAt(0).toUpperCase() + currentUser.username.slice(1)}
                 {isAdmin && <span className="admin-badge"> </span>}
               </span>
               <button onClick={handleLogout} className="logout-btn">

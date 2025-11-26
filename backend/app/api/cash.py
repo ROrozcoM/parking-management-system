@@ -25,6 +25,44 @@ async def get_active_session(
     summary = crud.get_cash_session_summary(db, session.id)
     return summary
 
+@router.get("/pre-close-info", response_model=schemas.CashSessionPreCloseInfo)
+async def get_pre_close_info_endpoint(
+    suggested_change: float = 300.0,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """
+    Obtiene información ANTES de cerrar caja:
+    - Esperado por método (cash/card/transfer)
+    - Sugerencias de retiro
+    - Transacciones pendientes
+    """
+    # Verificar que es admin
+    if current_user.role != models.UserRole.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Solo administradores pueden consultar esta información"
+        )
+    
+    # Obtener sesión activa
+    session = crud.get_active_cash_session(db)
+    if not session:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="No hay sesión de caja activa"
+        )
+    
+    # Obtener info
+    info = crud.get_pre_close_info(db, session.id, suggested_change)
+    
+    if not info:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error al calcular información de cierre"
+        )
+    
+    return info
+
 
 @router.post("/open-session", response_model=schemas.CashSessionResponse)
 async def open_session(
@@ -53,11 +91,14 @@ async def open_session(
 @router.post("/close-session/{session_id}", response_model=schemas.CashSessionResponse)
 async def close_session(
     session_id: int,
-    close_data: schemas.CashSessionClose,
+    close_data: schemas.CashSessionCloseWithBreakdown,
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
-    """Cierra una sesión de caja (solo admin)"""
+    """
+    Cierra una sesión de caja con desglose completo de billetes y métodos.
+    Envía email automático al cerrar.
+    """
     # Verificar que es admin
     if current_user.role != models.UserRole.ADMIN:
         raise HTTPException(
@@ -66,18 +107,30 @@ async def close_session(
         )
     
     try:
-        session = crud.close_cash_session(
-            db, 
-            session_id, 
-            close_data.actual_final_amount,
-            close_data.notes,
-            current_user.id
+        session = crud.close_cash_session_with_breakdown(
+            db=db,
+            session_id=session_id,
+            cash_breakdown=close_data.cash_breakdown,
+            actual_cash=close_data.actual_cash,
+            actual_card=close_data.actual_card,
+            actual_transfer=close_data.actual_transfer,
+            actual_withdrawal=close_data.actual_withdrawal,
+            remaining_in_register=close_data.remaining_in_register,
+            notes=close_data.notes,
+            user_id=current_user.id
         )
         return session
     except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
+        )
+    except Exception as e:
+        # Si falla el email, seguir con el cierre
+        print(f"⚠️ Error en cierre: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error al cerrar caja: {str(e)}"
         )
 
 

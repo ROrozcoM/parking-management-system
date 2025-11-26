@@ -4,6 +4,8 @@ import { staysAPI } from '../services/api';
 
 function CheckOutModal({ show, onHide, stay, onSuccess }) {
   const [finalPrice, setFinalPrice] = useState('');
+  const [checkInTime, setCheckInTime] = useState('');
+  const [checkOutTime, setCheckOutTime] = useState('');
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [error, setError] = useState(null);
@@ -16,23 +18,58 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
 
   useEffect(() => {
     if (stay && stay.check_in_time) {
-      calculateDuration();
+      initializeTimes();
     }
   }, [stay]);
 
-  const calculateDuration = () => {
-    const checkIn = new Date(stay.check_in_time);
-    const now = new Date();
-    const diffMs = now - checkIn;
-    const days = diffMs / (1000 * 60 * 60 * 24);
-    setDuration(days.toFixed(2));
+  useEffect(() => {
+    if (checkInTime && checkOutTime) {
+      calculateDuration();
+    }
+  }, [checkInTime, checkOutTime]);
+
+  const initializeTimes = () => {
+    // Inicializar fecha de entrada (desde stay o ahora)
+    const checkIn = stay.check_in_time 
+      ? new Date(stay.check_in_time)
+      : new Date();
+    
+    // Inicializar fecha de salida (desde stay si existe, o ahora)
+    const checkOut = stay.check_out_time 
+      ? new Date(stay.check_out_time)
+      : new Date();
+    
+    // Formatear para input datetime-local (YYYY-MM-DDTHH:MM)
+    setCheckInTime(formatDateTimeLocal(checkIn));
+    setCheckOutTime(formatDateTimeLocal(checkOut));
 
     // Si ya tiene pago adelantado, usar ese precio
     if (stay.prepaid_amount) {
       setFinalPrice(stay.prepaid_amount.toFixed(2));
-    } else {
-      // Si no, calcular precio (ajusta tu tarifa aquí)
-      const calculatedPrice = Math.ceil(days) * 10; // Ejemplo: 10€/día
+    }
+  };
+
+  const formatDateTimeLocal = (date) => {
+    // Convierte Date a formato "YYYY-MM-DDTHH:MM" para input datetime-local
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  const calculateDuration = () => {
+    const checkIn = new Date(checkInTime);
+    const checkOut = new Date(checkOutTime);
+    const diffMs = checkOut - checkIn;
+    const days = diffMs / (1000 * 60 * 60 * 24);
+    setDuration(days.toFixed(2));
+
+    // Calcular precio solo si no hay prepago
+    if (!stay.prepaid_amount) {
+      const nights = Math.ceil(days);
+      const calculatedPrice = nights * 10; // 10€/noche - ajusta según tu tarifa
       setFinalPrice(calculatedPrice.toFixed(2));
     }
   };
@@ -45,8 +82,8 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
       const ticketData = {
         type: 'checkout',
         license_plate: stay.vehicle.license_plate,
-        check_in_time: stay.check_in_time,
-        check_out_time: new Date().toISOString(),
+        check_in_time: checkInTime,
+        check_out_time: checkOutTime,
         amount: parseFloat(finalPrice)
       };
 
@@ -72,15 +109,26 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
       return;
     }
 
+    if (!checkInTime || !checkOutTime) {
+      setError('Por favor, ingrese fechas válidas');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      const response = await fetch(`/api/stays/${stay.id}/checkout-with-prepayment?final_price=${finalPrice}`, {
+      const response = await fetch(`/api/stays/${stay.id}/check-out`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          final_price: parseFloat(finalPrice),
+          check_in_time: new Date(checkInTime).toISOString(),
+          check_out_time: new Date(checkOutTime).toISOString()
+        })
       });
 
       if (!response.ok) {
@@ -120,7 +168,6 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
         throw new Error(errorData.detail || 'Error al marcar como SINPA');
       }
 
-      // Cerrar ambos modales y refrescar
       setShowSinpaModal(false);
       onSuccess();
       handleClose();
@@ -135,6 +182,8 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
 
   const handleClose = () => {
     setFinalPrice('');
+    setCheckInTime('');
+    setCheckOutTime('');
     setError(null);
     setDuration(null);
     setSinpaNotes('');
@@ -178,19 +227,32 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
               </div>
               
               <div className="col-md-6">
-                <h5>Detalles de Tiempo</h5>
-                <div className="detail-row">
-                  <strong>Entrada:</strong>
-                  <span>{new Date(stay.check_in_time).toLocaleString()}</span>
-                </div>
-                <div className="detail-row">
-                  <strong>Salida:</strong>
-                  <span>{new Date().toLocaleString()}</span>
-                </div>
+                <h5>Fechas (Editables)</h5>
+                
+                <Form.Group className="mb-3">
+                  <Form.Label><strong>Entrada:</strong></Form.Label>
+                  <Form.Control
+                    type="datetime-local"
+                    value={checkInTime}
+                    onChange={(e) => setCheckInTime(e.target.value)}
+                    disabled={loading || printing}
+                  />
+                </Form.Group>
+
+                <Form.Group className="mb-3">
+                  <Form.Label><strong>Salida:</strong></Form.Label>
+                  <Form.Control
+                    type="datetime-local"
+                    value={checkOutTime}
+                    onChange={(e) => setCheckOutTime(e.target.value)}
+                    disabled={loading || printing}
+                  />
+                </Form.Group>
+
                 {duration && (
                   <div className="detail-row">
                     <strong>Duración:</strong>
-                    <span className="highlight">{duration} días</span>
+                    <span className="highlight">{duration} días ({Math.ceil(parseFloat(duration))} noches)</span>
                   </div>
                 )}
               </div>
@@ -221,7 +283,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                     disabled={loading || printing}
                   />
                   <Form.Text className="text-muted">
-                    Precio calculado automáticamente. Puede modificarlo si es necesario.
+                    Precio calculado automáticamente según noches. Puede modificarlo si es necesario.
                   </Form.Text>
                 </Form.Group>
               </Alert>

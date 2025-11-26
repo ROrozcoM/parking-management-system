@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime
 from enum import Enum
 
@@ -294,3 +294,161 @@ class PendingTransactionsList(BaseModel):
     """Lista de transacciones pendientes"""
     pending: List[PendingTransaction]
     total_amount: float
+
+# ============================================================================
+# SCHEMAS ACTUALIZADOS PARA CHECKOUT Y PREPAYMENT CON FECHAS EDITABLES
+# ============================================================================
+
+class CheckoutRequest(BaseModel):
+    """Request para checkout con fechas editables"""
+    final_price: float = Field(..., gt=0, description="Precio final")
+    check_in_time: Optional[datetime] = Field(None, description="Fecha/hora entrada (editable)")
+    check_out_time: Optional[datetime] = Field(None, description="Fecha/hora salida (editable)")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "final_price": 25.50,
+                "check_in_time": "2025-11-24T10:00:00",
+                "check_out_time": "2025-11-26T12:00:00"
+            }
+        }
+
+class PrepaymentRequest(BaseModel):
+    """Request para prepayment con fechas editables (check-in implícito)"""
+    amount: float = Field(..., gt=0, description="Importe pagado adelantado")
+    payment_method: PaymentMethod = Field(PaymentMethod.CASH, description="Método de pago")
+    check_in_time: Optional[datetime] = Field(None, description="Fecha/hora entrada real/estimada")
+    check_out_time: Optional[datetime] = Field(None, description="Fecha/hora salida prevista")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "amount": 30.00,
+                "payment_method": "cash",
+                "check_in_time": "2025-11-25T14:00:00",
+                "check_out_time": "2025-11-28T10:00:00"
+            }
+        }
+
+class ExtendStayRequest(BaseModel):
+    """Request para extender estancia con prepayment"""
+    nights_to_add: int = Field(..., gt=0, description="Noches adicionales a añadir")
+    additional_amount: float = Field(..., gt=0, description="Importe adicional a pagar")
+    payment_method: PaymentMethod = Field(PaymentMethod.CASH, description="Método de pago de la extensión")
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "nights_to_add": 2,
+                "additional_amount": 20.00,
+                "payment_method": "card"
+            }
+        }
+
+# Schema para cerrar caja CON contador de billetes
+class CashSessionCloseWithBreakdown(BaseModel):
+    # Contador de billetes y monedas
+    cash_breakdown: Dict[str, int]  # {"500": 2, "200": 1, "100": 3, ...}
+    
+    # Totales por método (calculados o ingresados manualmente)
+    actual_cash: float
+    actual_card: float
+    actual_transfer: float
+    
+    # Retiro
+    actual_withdrawal: float  # Lo que realmente retiró
+    remaining_in_register: float  # Lo que queda en caja
+    
+    # Notas
+    notes: Optional[str] = None
+    
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "cash_breakdown": {
+                    "500": 0,
+                    "200": 2,
+                    "100": 1,
+                    "50": 1,
+                    "20": 5,
+                    "10": 3,
+                    "5": 2,
+                    "2": 5,
+                    "1": 10,
+                    "0.50": 4,
+                    "0.20": 5,
+                    "0.10": 10,
+                    "0.05": 2,
+                    "0.02": 5,
+                    "0.01": 10
+                },
+                "actual_cash": 450.00,
+                "actual_card": 200.00,
+                "actual_transfer": 100.00,
+                "actual_withdrawal": 350.00,
+                "remaining_in_register": 100.00,
+                "notes": "Todo correcto"
+            }
+        }
+
+
+# Schema de respuesta con desglose
+class CashSessionDetailedResponse(BaseModel):
+    id: int
+    opened_at: datetime
+    closed_at: Optional[datetime]
+    opened_by_username: str
+    closed_by_username: Optional[str]
+    
+    # Inicial
+    initial_amount: float
+    
+    # Esperado por método
+    expected_cash: Optional[float]
+    expected_card: Optional[float]
+    expected_transfer: Optional[float]
+    expected_final_amount: Optional[float]
+    
+    # Real por método
+    actual_cash: Optional[float]
+    actual_card: Optional[float]
+    actual_transfer: Optional[float]
+    actual_final_amount: Optional[float]
+    
+    # Contador billetes
+    cash_breakdown: Optional[Dict[str, int]]
+    
+    # Retiro
+    suggested_withdrawal: Optional[float]
+    actual_withdrawal: Optional[float]
+    remaining_in_register: Optional[float]
+    
+    # Descuadres
+    difference: Optional[float]
+    cash_difference: Optional[float]
+    
+    status: str
+    notes: Optional[str]
+    
+    class Config:
+        from_attributes = True
+
+
+# Schema para obtener resumen ANTES de cerrar (con sugerencias)
+class CashSessionPreCloseInfo(BaseModel):
+    session_id: int
+    
+    # Esperado por método
+    expected_cash: float
+    expected_card: float
+    expected_transfer: float
+    expected_total: float
+    
+    # Sugerencias
+    suggested_change: float  # Lo que debería quedar (ej: 300€)
+    suggested_withdrawal: float  # Lo que debería retirar
+    
+    # Transacciones pendientes
+    pending_count: int
+    has_pending: bool

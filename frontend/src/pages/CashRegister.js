@@ -69,14 +69,33 @@ function CashRegister() {
     }
   };
 
-  const handleCloseSession = async (actualAmount, notes) => {
-    try {
-      await cashAPI.closeSession(activeSession.id, actualAmount, notes);
-      setShowCloseModal(false);
-      fetchData();
-    } catch (err) {
-      alert('Error al cerrar caja: ' + (err.response?.data?.detail || err.message));
+  const handleCloseSession = async (closeData) => {
+  try {
+    // closeData ya viene con el formato correcto del modal
+    const response = await fetch(`/api/cash/close-session/${activeSession.id}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(closeData)
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Error al cerrar caja');
     }
+
+    setShowCloseModal(false);
+    fetchData();
+    
+    // Mensaje de éxito
+    alert('✅ Caja cerrada correctamente. Se ha enviado un email con el resumen.');
+    
+  } catch (err) {
+    alert('Error al cerrar caja: ' + (err.message || 'Error desconocido'));
+    throw err;
+  }
   };
 
   const handleRegisterPending = async (stayId, paymentMethod, amountPaid) => {
@@ -140,7 +159,7 @@ function CashRegister() {
   if (!activeSession) {
     return (
       <div className="cash-register">
-        <h1 className="page-title">💰 Caja</h1>
+        
         
         <div className="card" style={{ maxWidth: '500px', margin: '2rem auto', textAlign: 'center' }}>
           <div className="card-body" style={{ padding: '3rem' }}>
@@ -173,7 +192,7 @@ function CashRegister() {
   // Caja abierta - Vista principal
   return (
     <div className="cash-register">
-      <h1 className="page-title">💰 Caja</h1>
+      
 
       {error && <Alert variant="danger">{error}</Alert>}
 

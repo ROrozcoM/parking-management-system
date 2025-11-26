@@ -191,7 +191,11 @@ from app.crud import (
     get_payment_methods_distribution,
     get_average_stay_duration_by_country,
     get_monthly_comparison,
-    get_weekday_distribution
+    get_weekday_distribution,
+    get_total_nights,                              # ← NUEVO
+    get_nights_timeline,                           # ← NUEVO
+    get_stay_length_distribution,                  # ← NUEVO
+    get_country_distribution_with_nights           # ← NUEVO
 )
 
 @app.get("/api/analytics/overview")
@@ -218,8 +222,8 @@ async def analytics_country_distribution(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_admin_user)
 ):
-    """Distribución por países"""
-    return get_country_distribution(db)
+    """Distribución por países CON pernoctas"""
+    return get_country_distribution_with_nights(db)
 
 
 @app.get("/api/analytics/peak-hours")
@@ -275,3 +279,34 @@ async def analytics_weekday_distribution(
 ):
     """Distribución por día de la semana"""
     return get_weekday_distribution(db)
+
+# ============================================================================
+# NUEVOS ENDPOINTS PARA PERNOCTAS
+# ============================================================================
+
+@app.get("/api/analytics/total-nights")
+async def analytics_total_nights(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user)
+):
+    """Total de pernoctas y promedio"""
+    return get_total_nights(db)
+
+
+@app.get("/api/analytics/nights-timeline")
+async def analytics_nights_timeline(
+    days: int = 30,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user)
+):
+    """Pernoctas por día"""
+    return get_nights_timeline(db, days)
+
+
+@app.get("/api/analytics/stay-length-distribution")
+async def analytics_stay_length_distribution(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user)
+):
+    """Distribución de estancias por duración"""
+    return get_stay_length_distribution(db)

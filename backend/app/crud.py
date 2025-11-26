@@ -6,6 +6,10 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from passlib.context import CryptContext
 import subprocess
+import os
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -910,6 +914,142 @@ def get_weekday_distribution(db: Session):
         for r in results
     ]
 
+def get_total_nights(db: Session):
+    """
+    Obtiene el total de pernoctas y el promedio por estancia
+    """
+    # Total de pernoctas
+    total_nights_result = db.query(
+        func.sum(
+            func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
+        ).label('total_nights')
+    ).filter(
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Stay.check_in_time.isnot(None),
+        models.Stay.check_out_time.isnot(None)
+    ).scalar()
+    
+    total_nights = int(total_nights_result or 0)
+    
+    # Número total de estancias
+    total_stays = db.query(func.count(models.Stay.id)).filter(
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Stay.check_in_time.isnot(None),
+        models.Stay.check_out_time.isnot(None)
+    ).scalar() or 0
+    
+    # Promedio
+    avg_nights = round(total_nights / total_stays, 2) if total_stays > 0 else 0
+    
+    return {
+        "total_nights": total_nights,
+        "avg_nights_per_stay": avg_nights
+    }
+
+
+def get_nights_timeline(db: Session, days: int = 30):
+    """
+    Obtiene el número de pernoctas por día en los últimos X días
+    """
+    cutoff_date = datetime.now(ZoneInfo("Europe/Madrid")) - timedelta(days=days)
+    
+    results = db.query(
+        func.date(models.Stay.check_out_time).label('date'),
+        func.sum(
+            func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
+        ).label('nights')
+    ).filter(
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Stay.check_out_time >= cutoff_date,
+        models.Stay.check_in_time.isnot(None),
+        models.Stay.check_out_time.isnot(None)
+    ).group_by(
+        func.date(models.Stay.check_out_time)
+    ).order_by('date').all()
+    
+    return [
+        {
+            "date": r.date.strftime("%Y-%m-%d"),
+            "nights": int(r.nights or 0)
+        }
+        for r in results
+    ]
+
+
+def get_stay_length_distribution(db: Session):
+    """
+    Distribución de estancias por duración (1 noche, 2 noches, 3-5, 6+)
+    """
+    # Obtener todas las estancias completadas con duración
+    stays = db.query(
+        func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
+    ).filter(
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Stay.check_in_time.isnot(None),
+        models.Stay.check_out_time.isnot(None)
+    ).all()
+    
+    # Agrupar por categorías
+    one_night = 0
+    two_nights = 0
+    three_to_five = 0
+    six_plus = 0
+    
+    for (days,) in stays:
+        nights = int(days) if days else 0
+        
+        if nights == 1:
+            one_night += 1
+        elif nights == 2:
+            two_nights += 1
+        elif 3 <= nights <= 5:
+            three_to_five += 1
+        elif nights >= 6:
+            six_plus += 1
+    
+    return [
+        {"category": "1 noche", "count": one_night},
+        {"category": "2 noches", "count": two_nights},
+        {"category": "3-5 noches", "count": three_to_five},
+        {"category": "6+ noches", "count": six_plus}
+    ]
+
+
+def get_country_distribution_with_nights(db: Session):
+    """
+    Distribución de clientes por país INCLUYENDO pernoctas
+    """
+    results = db.query(
+        models.Vehicle.country,
+        func.count(models.Stay.id).label('count'),
+        func.sum(models.Stay.final_price).label('revenue'),
+        func.sum(
+            func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
+        ).label('total_nights')
+    ).join(
+        models.Stay, models.Vehicle.id == models.Stay.vehicle_id
+    ).filter(
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Vehicle.country.isnot(None),
+        models.Stay.check_in_time.isnot(None),
+        models.Stay.check_out_time.isnot(None)
+    ).group_by(
+        models.Vehicle.country
+    ).order_by(
+        func.count(models.Stay.id).desc()
+    ).all()
+    
+    return [
+        {
+            "country": r.country or "Unknown",
+            "count": r.count,
+            "revenue": float(r.revenue or 0),
+            "total_nights": int(r.total_nights or 0),
+            "avg_nights": round(float(r.total_nights or 0) / r.count, 2) if r.count > 0 else 0
+        }
+        for r in results
+    ]
+
 
 # ============================================================================
 # FUNCIONES PARA SISTEMA DE CAJA
@@ -983,45 +1123,88 @@ def close_cash_session(db: Session, session_id: int, actual_final_amount: float,
     
     return session
 
-
-def calculate_expected_amount(db: Session, session_id: int) -> float:
-    """Calcula el importe esperado en caja"""
+def calculate_expected_by_method(db: Session, session_id: int):
+    """
+    Calcula el importe esperado en caja DESGLOSADO por método de pago
+    Retorna: dict con expected_cash, expected_card, expected_transfer
+    """
     session = db.query(models.CashSession).filter(
         models.CashSession.id == session_id
     ).first()
     
     if not session:
-        return 0.0
+        return None
     
-    # Inicial
-    expected = session.initial_amount
+    # Inicial (siempre en efectivo)
+    expected_cash = session.initial_amount
+    expected_card = 0.0
+    expected_transfer = 0.0
     
-    # Sumar ingresos en efectivo
-    cash_in = db.query(func.sum(models.CashTransaction.amount_due)).filter(
-        and_(
-            models.CashTransaction.cash_session_id == session_id,
-            models.CashTransaction.transaction_type.in_([
-                models.TransactionType.CHECKOUT,
-                models.TransactionType.PREPAYMENT
-            ]),
-            models.CashTransaction.payment_method == models.PaymentMethod.CASH
-        )
-    ).scalar() or 0.0
+    # Obtener todas las transacciones de la sesión
+    transactions = db.query(models.CashTransaction).filter(
+        models.CashTransaction.cash_session_id == session_id
+    ).all()
     
-    expected += cash_in
+    for tx in transactions:
+        amount = tx.amount_due
+        
+        # INGRESOS
+        if tx.transaction_type in [models.TransactionType.CHECKOUT, models.TransactionType.PREPAYMENT]:
+            if tx.payment_method == models.PaymentMethod.CASH:
+                expected_cash += amount
+            elif tx.payment_method == models.PaymentMethod.CARD:
+                expected_card += amount
+            elif tx.payment_method == models.PaymentMethod.TRANSFER:
+                expected_transfer += amount
+        
+        # RETIROS (solo afectan al efectivo)
+        elif tx.transaction_type == models.TransactionType.WITHDRAWAL:
+            expected_cash -= amount
     
-    # Restar retiros
-    withdrawals = db.query(func.sum(models.CashTransaction.amount_due)).filter(
-        and_(
-            models.CashTransaction.cash_session_id == session_id,
-            models.CashTransaction.transaction_type == models.TransactionType.WITHDRAWAL
-        )
-    ).scalar() or 0.0
+    expected_total = expected_cash + expected_card + expected_transfer
     
-    expected -= withdrawals
-    
-    return expected
+    return {
+        "expected_cash": expected_cash,
+        "expected_card": expected_card,
+        "expected_transfer": expected_transfer,
+        "expected_total": expected_total
+    }
 
+
+
+def calculate_expected_amount(db: Session, session_id: int) -> float:
+    """Calcula el importe esperado total (retrocompatibilidad)"""
+    result = calculate_expected_by_method(db, session_id)
+    return result["expected_total"] if result else 0.0
+
+def get_pre_close_info(db: Session, session_id: int, suggested_change: float = 300.0):
+    """
+    Obtiene información para mostrar ANTES de cerrar caja
+    Incluye sugerencias de retiro
+    """
+    expected = calculate_expected_by_method(db, session_id)
+    if not expected:
+        return None
+    
+    # Contar pendientes
+    pending = get_pending_transactions(db)
+    pending_count = len(pending.get("pending", []))
+    
+    # Calcular sugerencia de retiro
+    # Retiro = efectivo_esperado - cambio_sugerido
+    suggested_withdrawal = max(0, expected["expected_cash"] - suggested_change)
+    
+    return {
+        "session_id": session_id,
+        "expected_cash": expected["expected_cash"],
+        "expected_card": expected["expected_card"],
+        "expected_transfer": expected["expected_transfer"],
+        "expected_total": expected["expected_total"],
+        "suggested_change": suggested_change,
+        "suggested_withdrawal": suggested_withdrawal,
+        "pending_count": pending_count,
+        "has_pending": pending_count > 0
+    }
 
 def get_cash_session_summary(db: Session, session_id: int):
     """Obtiene el resumen de una sesión de caja"""
@@ -1278,7 +1461,221 @@ def get_cash_transactions(db: Session, session_id: int):
     return result
 
 
+def close_cash_session_with_breakdown(
+    db: Session, 
+    session_id: int,
+    cash_breakdown: dict,
+    actual_cash: float,
+    actual_card: float,
+    actual_transfer: float,
+    actual_withdrawal: float,
+    remaining_in_register: float,
+    notes: Optional[str],
+    user_id: int
+):
+    """
+    Cierra una sesión de caja con desglose completo de billetes y métodos
+    """
+    session = db.query(models.CashSession).filter(
+        models.CashSession.id == session_id
+    ).first()
+    
+    if not session:
+        raise ValueError("Sesión no encontrada")
+    
+    if session.status == models.CashSessionStatus.CLOSED:
+        raise ValueError("La sesión ya está cerrada")
+    
+    # Calcular esperado por método
+    expected = calculate_expected_by_method(db, session_id)
+    
+    # Calcular total real
+    actual_final_amount = actual_cash + actual_card + actual_transfer
+    
+    # Calcular descuadres
+    total_difference = actual_final_amount - expected["expected_total"]
+    cash_difference = actual_cash - expected["expected_cash"]
+    
+    # Calcular retiro sugerido (esperado - 300€ de cambio)
+    suggested_withdrawal = max(0, expected["expected_cash"] - 300.0)
+    
+    # Actualizar sesión
+    session.closed_at = datetime.now(ZoneInfo("Europe/Madrid"))
+    session.closed_by_user_id = user_id
+    
+    # Esperado
+    session.expected_cash = expected["expected_cash"]
+    session.expected_card = expected["expected_card"]
+    session.expected_transfer = expected["expected_transfer"]
+    session.expected_final_amount = expected["expected_total"]
+    
+    # Real
+    session.actual_cash = actual_cash
+    session.actual_card = actual_card
+    session.actual_transfer = actual_transfer
+    session.actual_final_amount = actual_final_amount
+    
+    # Billetes
+    session.cash_breakdown = cash_breakdown
+    
+    # Retiro
+    session.suggested_withdrawal = suggested_withdrawal
+    session.actual_withdrawal = actual_withdrawal
+    session.remaining_in_register = remaining_in_register
+    
+    # Descuadres
+    session.difference = total_difference
+    session.cash_difference = cash_difference
+    
+    session.status = models.CashSessionStatus.CLOSED
+    session.notes = notes
+    
+    db.commit()
+    db.refresh(session)
+    
+    # ENVIAR EMAIL
+    try:
+        send_close_email(db, session)
+    except Exception as e:
+        print(f"⚠️ Error enviando email: {e}")
+        # No fallar el cierre si falla el email
+    
+    return session
 
+
+# ============================================================================
+# FUNCIÓN NUEVA: Enviar email de cierre
+# ============================================================================
+
+def send_close_email(db: Session, session: models.CashSession):
+    """
+    Envía email con el resumen del cierre de caja
+    """
+    # Configuración desde .env
+    smtp_host = os.getenv("SMTP_HOST", "smtp.gmail.com")
+    smtp_port = int(os.getenv("SMTP_PORT", "587"))
+    smtp_user = os.getenv("SMTP_USER")
+    smtp_password = os.getenv("SMTP_PASSWORD")
+    notification_emails = os.getenv("NOTIFICATION_EMAILS", "").split(",")
+    
+    if not smtp_user or not smtp_password:
+        print("⚠️ SMTP no configurado, no se enviará email")
+        return
+    
+    if not notification_emails or notification_emails == ['']:
+        print("⚠️ No hay emails de notificación configurados")
+        return
+    
+    # Obtener nombres de usuarios
+    opened_by = db.query(models.User).filter(models.User.id == session.opened_by_user_id).first()
+    closed_by = db.query(models.User).filter(models.User.id == session.closed_by_user_id).first()
+    
+    opened_by_name = opened_by.username if opened_by else "Desconocido"
+    closed_by_name = closed_by.username if closed_by else "Desconocido"
+    
+    # Formatear fecha
+    fecha = session.closed_at.strftime("%d/%m/%Y %H:%M")
+    
+    # Construir desglose de billetes
+    breakdown_text = ""
+    if session.cash_breakdown:
+        denominations = ["500", "200", "100", "50", "20", "10", "5", "2", "1", 
+                        "0.50", "0.20", "0.10", "0.05", "0.02", "0.01"]
+        for denom in denominations:
+            count = session.cash_breakdown.get(denom, 0)
+            if count > 0:
+                breakdown_text += f"  {denom}€ × {count}\n"
+    
+    # Indicador de descuadre
+    status_emoji = "✅" if abs(session.difference or 0) < 0.01 else "⚠️"
+    cash_status = "✅" if abs(session.cash_difference or 0) < 0.01 else "⚠️"
+    
+    # Construir email
+    subject = f"🔒 Caja Cerrada - {session.closed_at.strftime('%d/%m/%Y')}"
+    
+    body = f"""
+═══════════════════════════════════════════════════
+              CIERRE DE CAJA
+═══════════════════════════════════════════════════
+
+📅 Fecha: {fecha}
+👤 Abierto por: {opened_by_name.capitalize()}
+👤 Cerrado por: {closed_by_name.capitalize()}
+
+═══════════════════════════════════════════════════
+            RESUMEN FINANCIERO
+═══════════════════════════════════════════════════
+
+💶 EFECTIVO:
+  Esperado:    {session.expected_cash:.2f}€
+  Real:        {session.actual_cash:.2f}€
+  Diferencia:  {session.cash_difference:.2f}€ {cash_status}
+
+💳 TARJETA:
+  Esperado:    {session.expected_card:.2f}€
+  Real:        {session.actual_card:.2f}€
+
+🏦 TRANSFERENCIA:
+  Esperado:    {session.expected_transfer:.2f}€
+  Real:        {session.actual_transfer:.2f}€
+
+───────────────────────────────────────────────────
+TOTAL:
+  Esperado:    {session.expected_final_amount:.2f}€
+  Real:        {session.actual_final_amount:.2f}€
+  Diferencia:  {session.difference:.2f}€ {status_emoji}
+
+═══════════════════════════════════════════════════
+         DESGLOSE BILLETES/MONEDAS
+═══════════════════════════════════════════════════
+
+{breakdown_text if breakdown_text else "  No registrado"}
+
+═══════════════════════════════════════════════════
+              RETIRO DE CAJA
+═══════════════════════════════════════════════════
+
+💸 Sugerido:        {session.suggested_withdrawal:.2f}€
+💸 Retirado:        {session.actual_withdrawal:.2f}€
+💰 Queda en caja:   {session.remaining_in_register:.2f}€
+
+═══════════════════════════════════════════════════
+"""
+    
+    if session.notes:
+        body += f"""
+📝 NOTAS:
+{session.notes}
+
+═══════════════════════════════════════════════════
+"""
+    
+    body += f"""
+
+──────────────────────────────────────────────────
+Camper Park Medina Azahara - Sistema de Caja
+──────────────────────────────────────────────────
+"""
+    
+    # Crear mensaje
+    msg = MIMEMultipart()
+    msg['From'] = smtp_user
+    msg['To'] = ", ".join(notification_emails)
+    msg['Subject'] = subject
+    
+    msg.attach(MIMEText(body, 'plain', 'utf-8'))
+    
+    # Enviar
+    try:
+        with smtplib.SMTP(smtp_host, smtp_port) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.send_message(msg)
+        
+        print(f"✅ Email enviado a: {', '.join(notification_emails)}")
+    except Exception as e:
+        print(f"❌ Error enviando email: {e}")
+        raise
 
 
 

@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
 from typing import List
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from app.database import get_db
 from app import models, schemas
 from app.dependencies import get_current_active_user
@@ -10,7 +11,6 @@ from app.crud import (
     get_active_stays,
     get_stay,
     check_in_stay,
-    check_out_stay,
     discard_stay,
     create_manual_stay,
 )
@@ -46,20 +46,145 @@ async def check_in(
         )
     return stay
 
+# ============================================================================
+# ENDPOINT CHECKOUT ACTUALIZADO CON FECHAS EDITABLES
+# ============================================================================
+
 @router.post("/{stay_id}/check-out", response_model=schemas.Stay)
 async def check_out(
     stay_id: int,
-    final_price: float = Query(..., gt=0),
+    checkout_data: schemas.CheckoutRequest = Body(...),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
-    stay = check_out_stay(db, stay_id, final_price, current_user.id)
+    """
+    Checkout con fechas editables.
+    - check_in_time: Fecha/hora de entrada (si no se especifica, mantiene la actual)
+    - check_out_time: Fecha/hora de salida (si no se especifica, usa NOW())
+    - final_price: Precio final
+    """
+    stay = db.query(models.Stay).filter(models.Stay.id == stay_id).first()
     if not stay:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Stay not found"
         )
+    
+    # Actualizar fechas (editables)
+    if checkout_data.check_in_time:
+        stay.check_in_time = checkout_data.check_in_time
+    
+    if checkout_data.check_out_time:
+        stay.check_out_time = checkout_data.check_out_time
+    else:
+        stay.check_out_time = datetime.now(ZoneInfo("Europe/Madrid"))
+    
+    # Actualizar precio y estado
+    stay.final_price = checkout_data.final_price
+    stay.status = models.StayStatus.COMPLETED
+    stay.payment_status = models.PaymentStatus.PAID
+    stay.cash_registered = False  # Pendiente de registrar en caja
+    
+    # Liberar plaza
+    if stay.parking_spot:
+        stay.parking_spot.is_occupied = False
+    
+    # Log en historial
+    history_log = models.HistoryLog(
+        stay_id=stay_id,
+        action="Check-out completed",
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+        details={
+            "final_price": checkout_data.final_price,
+            "check_in_time": stay.check_in_time.isoformat() if stay.check_in_time else None,
+            "check_out_time": stay.check_out_time.isoformat() if stay.check_out_time else None,
+            "nights": (stay.check_out_time - stay.check_in_time).days if stay.check_in_time and stay.check_out_time else None
+        },
+        user_id=current_user.id
+    )
+    db.add(history_log)
+    
+    db.commit()
+    db.refresh(stay)
+    
     return stay
+
+
+# ============================================================================
+# ENDPOINT PREPAYMENT ACTUALIZADO CON FECHAS EDITABLES Y CHECK-IN IMPLÍCITO
+# ============================================================================
+
+@router.post("/{stay_id}/prepay")
+async def prepay_stay(
+    stay_id: int,
+    prepayment_data: schemas.PrepaymentRequest = Body(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """
+    Prepayment con check-in implícito y fechas editables.
+    - amount: Importe pagado adelantado
+    - payment_method: Método de pago (cash/card/transfer)
+    - check_in_time: Fecha/hora entrada (si no se especifica, usa NOW())
+    - check_out_time: Fecha/hora salida PREVISTA (requerida)
+    
+    El stay pasará a ACTIVE automáticamente (check-in implícito)
+    """
+    stay = db.query(models.Stay).filter(models.Stay.id == stay_id).first()
+    if not stay:
+        raise HTTPException(status_code=404, detail="Stay not found")
+    
+    # Actualizar fechas
+    if prepayment_data.check_in_time:
+        stay.check_in_time = prepayment_data.check_in_time
+    else:
+        stay.check_in_time = datetime.now(ZoneInfo("Europe/Madrid"))
+    
+    if prepayment_data.check_out_time:
+        stay.check_out_time = prepayment_data.check_out_time
+    else:
+        # Si no se especifica salida, asignar 3 días por defecto
+        from datetime import timedelta
+        stay.check_out_time = stay.check_in_time + timedelta(days=3)
+    
+    # Actualizar prepago
+    stay.prepaid_amount = prepayment_data.amount
+    stay.payment_status = models.PaymentStatus.PREPAID
+    stay.payment_method = prepayment_data.payment_method
+    stay.prepayment_cash_registered = False  # Pendiente para caja
+    
+    # CAMBIO CRÍTICO: Pasar a ACTIVE (check-in implícito)
+    stay.status = models.StayStatus.ACTIVE
+    
+    # Crear log en history_logs
+    history_log = models.HistoryLog(
+        stay_id=stay_id,
+        action="Prepayment received (check-in implícito)",
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+        details={
+            "amount": prepayment_data.amount,
+            "payment_method": prepayment_data.payment_method.value,
+            "check_in_time": stay.check_in_time.isoformat(),
+            "check_out_time_prevista": stay.check_out_time.isoformat(),
+            "nights_previstas": (stay.check_out_time - stay.check_in_time).days
+        },
+        user_id=current_user.id
+    )
+    db.add(history_log)
+    
+    db.commit()
+    db.refresh(stay)
+    
+    return {
+        "success": True,
+        "message": "Prepayment recorded and check-in completed",
+        "stay_id": stay_id,
+        "amount": prepayment_data.amount,
+        "check_in_time": stay.check_in_time,
+        "check_out_time_prevista": stay.check_out_time,
+        "status": stay.status.value
+    }
+
 
 @router.post("/{stay_id}/discard", response_model=schemas.Stay)
 async def discard(
@@ -99,32 +224,148 @@ async def create_manual_entry(
         )
     return stay
 
-@router.post("/{stay_id}/prepay/")
-async def prepay_stay(
+
+# ============================================================================
+# ENDPOINT PARA CHECKOUT CON PREPAYMENT (LEGACY - MANTENER POR COMPATIBILIDAD)
+# ============================================================================
+
+@router.post("/{stay_id}/checkout-with-prepayment")
+async def checkout_with_prepayment(
+    stay_id: int,
+    final_price: float = Query(..., gt=0),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """
+    Endpoint legacy para checkout considerando prepago.
+    Mantener por compatibilidad con frontend actual.
+    """
+    stay = db.query(models.Stay).filter(models.Stay.id == stay_id).first()
+    if not stay:
+        raise HTTPException(status_code=404, detail="Stay not found")
+    
+    stay.check_out_time = datetime.now(ZoneInfo("Europe/Madrid"))
+    stay.final_price = final_price
+    stay.status = models.StayStatus.COMPLETED
+    stay.payment_status = models.PaymentStatus.PAID
+    stay.cash_registered = False
+    
+    if stay.parking_spot:
+        stay.parking_spot.is_occupied = False
+    
+    history_log = models.HistoryLog(
+        stay_id=stay_id,
+        action="Check-out completed (with prepayment)",
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+        details={"final_price": final_price},
+        user_id=current_user.id
+    )
+    db.add(history_log)
+    
+    db.commit()
+    db.refresh(stay)
+    
+    return {"success": True, "message": "Checkout completed"}
+
+
+# ============================================================================
+# ENDPOINT PARA PREPAYMENT (LEGACY - MANTENER POR COMPATIBILIDAD)
+# ============================================================================
+
+@router.post("/{stay_id}/prepayment")
+async def prepayment_legacy(
     stay_id: int,
     amount: float = Query(..., description="Prepaid amount"),
     payment_method: str = Query("cash", description="Payment method"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
+    """
+    Endpoint legacy para prepayment sin fechas editables.
+    Mantener por compatibilidad con frontend actual.
+    Redirige al nuevo endpoint con valores por defecto.
+    """
+    from datetime import timedelta
+    
+    # Convertir string a enum
+    try:
+        payment_method_enum = models.PaymentMethod(payment_method)
+    except ValueError:
+        payment_method_enum = models.PaymentMethod.CASH  # Default a cash si no es válido
+    
+    prepayment_data = schemas.PrepaymentRequest(
+        amount=amount,
+        payment_method=payment_method_enum,
+        check_in_time=datetime.now(ZoneInfo("Europe/Madrid")),
+        check_out_time=datetime.now(ZoneInfo("Europe/Madrid")) + timedelta(days=3)
+    )
+    
+    return await prepay_stay(stay_id, prepayment_data, db, current_user)
+
+@router.post("/{stay_id}/extend-stay")
+async def extend_stay(
+    stay_id: int,
+    extend_data: schemas.ExtendStayRequest = Body(...),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """
+    Extender estancia para stays con prepayment.
+    - Añade noches adicionales
+    - Suma importe al prepaid_amount
+    - Actualiza check_out_time
+    - Registra método de pago de la extensión en history_logs
+    """
     stay = db.query(models.Stay).filter(models.Stay.id == stay_id).first()
     if not stay:
         raise HTTPException(status_code=404, detail="Stay not found")
     
-    # Actualizar prepago
-    stay.prepaid_amount = amount
-    stay.payment_status = models.PaymentStatus.PREPAID
-    stay.prepayment_cash_registered = False  # ← NUEVO: Marca como pendiente para caja
+    # Verificar que tenga prepayment
+    if stay.payment_status != models.PaymentStatus.PREPAID:
+        raise HTTPException(
+            status_code=400, 
+            detail="Solo se pueden extender estancias con pago adelantado"
+        )
     
-    # Crear log en history_logs
+    # Verificar que esté activo
+    if stay.status != models.StayStatus.ACTIVE:
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden extender estancias activas"
+        )
+    
+    # Guardar valores originales
+    original_amount = stay.prepaid_amount
+    original_checkout = stay.check_out_time
+    original_payment_method = stay.payment_method
+    
+    # Calcular nueva fecha de checkout
+    from datetime import timedelta
+    if stay.check_out_time:
+        new_checkout = stay.check_out_time + timedelta(days=extend_data.nights_to_add)
+    else:
+        # Si no tenía checkout previsto (raro), usar check_in + días
+        new_checkout = stay.check_in_time + timedelta(days=extend_data.nights_to_add)
+    
+    # Actualizar stay
+    stay.prepaid_amount = (stay.prepaid_amount or 0) + extend_data.additional_amount
+    stay.check_out_time = new_checkout
+    
+    # Crear log detallado en history_logs
     history_log = models.HistoryLog(
         stay_id=stay_id,
-        action="Prepayment received",
+        action="Estancia extendida",
         timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
         details={
-            "amount": amount, 
-            "payment_method": payment_method,
-            "prepaid_at": datetime.now(ZoneInfo("Europe/Madrid")).isoformat()
+            "nights_added": extend_data.nights_to_add,
+            "additional_amount": extend_data.additional_amount,
+            "payment_method_extension": extend_data.payment_method.value,
+            "original_payment_method": original_payment_method.value if original_payment_method else None,
+            "original_prepaid_amount": original_amount,
+            "new_total_prepaid_amount": stay.prepaid_amount,
+            "original_check_out_time": original_checkout.isoformat() if original_checkout else None,
+            "new_check_out_time": new_checkout.isoformat(),
+            "note": f"Cliente pagó {original_amount:.2f}€ en {original_payment_method.value if original_payment_method else 'N/A'} + {extend_data.additional_amount:.2f}€ en {extend_data.payment_method.value}"
         },
         user_id=current_user.id
     )
@@ -135,7 +376,14 @@ async def prepay_stay(
     
     return {
         "success": True,
-        "message": "Prepayment recorded", 
-        "stay_id": stay_id, 
-        "amount": amount
+        "message": "Estancia extendida correctamente",
+        "stay_id": stay_id,
+        "nights_added": extend_data.nights_to_add,
+        "additional_amount": extend_data.additional_amount,
+        "new_total_amount": stay.prepaid_amount,
+        "new_check_out_time": stay.check_out_time,
+        "payment_methods_used": {
+            "original": original_payment_method.value if original_payment_method else None,
+            "extension": extend_data.payment_method.value
+        }
     }

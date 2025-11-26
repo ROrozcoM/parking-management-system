@@ -23,15 +23,27 @@ done
 echo "✅ PostgreSQL está listo"
 echo ""
 
-# Ejecutar script de creación de usuarios
+# Ejecutar script de creación de usuarios (buscar en ambas ubicaciones)
 echo "👥 Inicializando usuarios del sistema..."
-python3 /app/create_users.py
+if [ -f /app/create_users.py ]; then
+    python3 /app/create_users.py
+elif [ -f /app/app/create_users.py ]; then
+    python3 /app/app/create_users.py
+else
+    echo "⚠️  create_users.py no encontrado (esto puede ser normal si ya existen usuarios)"
+fi
 
 echo ""
 
-# Ejecutar script de creación de plazas
+# Ejecutar script de creación de plazas (buscar en ambas ubicaciones)
 echo "🅿️  Inicializando plazas de parking..."
-python3 /app/create_parking_spots.py
+if [ -f /app/create_parking_spots.py ]; then
+    python3 /app/create_parking_spots.py
+elif [ -f /app/app/create_parking_spots.py ]; then
+    python3 /app/app/create_parking_spots.py
+else
+    echo "⚠️  create_parking_spots.py no encontrado (esto puede ser normal si ya existen plazas)"
+fi
 
 echo ""
 echo "========================================"

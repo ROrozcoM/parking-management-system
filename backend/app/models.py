@@ -165,10 +165,33 @@ class CashSession(Base):
     opened_by_user_id = Column(Integer, ForeignKey("users.id"))
     closed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     
-    initial_amount = Column(Float)  # Importe inicial
-    expected_final_amount = Column(Float, nullable=True)  # Calculado
-    actual_final_amount = Column(Float, nullable=True)  # Real al cerrar
-    difference = Column(Float, nullable=True)  # Descuadre
+    # Importe inicial
+    initial_amount = Column(Float)
+    
+    # DESGLOSE ESPERADO POR MÉTODO
+    expected_cash = Column(Float, nullable=True)
+    expected_card = Column(Float, nullable=True)
+    expected_transfer = Column(Float, nullable=True)
+    expected_final_amount = Column(Float, nullable=True)  # Total esperado
+    
+    # DESGLOSE REAL AL CERRAR
+    actual_cash = Column(Float, nullable=True)
+    actual_card = Column(Float, nullable=True)
+    actual_transfer = Column(Float, nullable=True)
+    actual_final_amount = Column(Float, nullable=True)  # Total real
+    
+    # CONTADOR DE BILLETES Y MONEDAS
+    cash_breakdown = Column(JSON, nullable=True)
+    # Formato: {"500": 2, "200": 1, "100": 3, "50": 2, "20": 5, ...}
+    
+    # RETIRO
+    suggested_withdrawal = Column(Float, nullable=True)  # Sugerencia del sistema
+    actual_withdrawal = Column(Float, nullable=True)  # Lo que realmente retiró
+    remaining_in_register = Column(Float, nullable=True)  # Lo que queda
+    
+    # Descuadre
+    difference = Column(Float, nullable=True)  # Total real - Total esperado
+    cash_difference = Column(Float, nullable=True)  # Solo efectivo
     
     status = Column(Enum(CashSessionStatus), default=CashSessionStatus.OPEN)
     notes = Column(String, nullable=True)

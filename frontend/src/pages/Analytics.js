@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Alert, Spinner, Card, Row, Col, ButtonGroup, Button } from 'react-bootstrap';
+import { Alert, Spinner, Card, Row, Col, ButtonGroup, Button, Table } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -17,12 +17,13 @@ function Analytics() {
   // Estados para cada tipo de datos
   const [overview, setOverview] = useState(null);
   const [revenueTimeline, setRevenueTimeline] = useState([]);
+  const [nightsTimeline, setNightsTimeline] = useState([]);
+  const [totalNights, setTotalNights] = useState(null);
   const [countryDistribution, setCountryDistribution] = useState([]);
   const [peakHours, setPeakHours] = useState([]);
-  const [vehicleTypes, setVehicleTypes] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [stayDuration, setStayDuration] = useState([]);
-  const [monthlyComparison, setMonthlyComparison] = useState([]);
+  const [stayLengthDistribution, setStayLengthDistribution] = useState([]);
   const [weekdayDistribution, setWeekdayDistribution] = useState([]);
 
   useEffect(() => {
@@ -58,33 +59,36 @@ function Analytics() {
       const [
         overviewData,
         revenueData,
+        nightsTimelineData,
+        totalNightsData,
         countryData,
         peakHoursData,
-        vehicleTypesData,
         paymentMethodsData,
         stayDurationData,
-        monthlyData,
+        stayLengthData,
         weekdayData
       ] = await Promise.all([
         fetchWithAuth('/api/analytics/overview'),
         fetchWithAuth(`/api/analytics/revenue-timeline?days=${timeRange}`),
+        fetchWithAuth(`/api/analytics/nights-timeline?days=${timeRange}`),
+        fetchWithAuth('/api/analytics/total-nights'),
         fetchWithAuth('/api/analytics/country-distribution'),
         fetchWithAuth('/api/analytics/peak-hours'),
-        fetchWithAuth('/api/analytics/vehicle-types'),
         fetchWithAuth('/api/analytics/payment-methods'),
         fetchWithAuth('/api/analytics/stay-duration-by-country'),
-        fetchWithAuth('/api/analytics/monthly-comparison?months=6'),
+        fetchWithAuth('/api/analytics/stay-length-distribution'),
         fetchWithAuth('/api/analytics/weekday-distribution')
       ]);
 
       setOverview(overviewData);
       setRevenueTimeline(revenueData);
+      setNightsTimeline(nightsTimelineData);
+      setTotalNights(totalNightsData);
       setCountryDistribution(countryData);
       setPeakHours(peakHoursData);
-      setVehicleTypes(vehicleTypesData);
       setPaymentMethods(paymentMethodsData);
       setStayDuration(stayDurationData);
-      setMonthlyComparison(monthlyData);
+      setStayLengthDistribution(stayLengthData);
       setWeekdayDistribution(weekdayData);
 
     } catch (err) {
@@ -123,7 +127,6 @@ function Analytics() {
       <div className="d-flex justify-content-between align-items-center mb-4">
         <div>
           {/*<h1>📊 Analytics Dashboard</h1>*/}
-          {/*<p className="text-muted">Análisis completo del negocio</p>*/}
         </div>
         <ButtonGroup>
           <Button 
@@ -168,8 +171,11 @@ function Analytics() {
         <Col md={3}>
           <Card className="text-center">
             <Card.Body>
-              <h6 className="text-muted">Activos Ahora</h6>
-              <h2 className="text-info">{overview?.active_now || 0}</h2>
+              <h6 className="text-muted">Total Pernoctas</h6>
+              <h2 className="text-info">{totalNights?.total_nights || 0}</h2>
+              <small className="text-muted">
+                Promedio: {totalNights?.avg_nights_per_stay || 0} noches/cliente
+              </small>
             </Card.Body>
           </Card>
         </Col>
@@ -188,9 +194,9 @@ function Analytics() {
         </Col>
       </Row>
 
-      {/* Gráfico de Ingresos en el Tiempo */}
+      {/* Gráficos de Línea: Ingresos y Pernoctas */}
       <Row className="mb-4">
-        <Col md={12}>
+        <Col md={6}>
           <Card>
             <Card.Header>
               <h5>📈 Ingresos Diarios (últimos {timeRange} días)</h5>
@@ -209,69 +215,110 @@ function Analytics() {
             </Card.Body>
           </Card>
         </Col>
+        
+        <Col md={6}>
+          <Card>
+            <Card.Header>
+              <h5>🌙 Pernoctas Diarias (últimos {timeRange} días)</h5>
+            </Card.Header>
+            <Card.Body>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={nightsTimeline}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="nights" stroke="#8884d8" name="Pernoctas" />
+                </LineChart>
+              </ResponsiveContainer>
+            </Card.Body>
+          </Card>
+        </Col>
       </Row>
 
-      {/* Comparación Mensual */}
+      {/* Distribución por País con Tabla Detallada */}
       <Row className="mb-4">
         <Col md={12}>
           <Card>
             <Card.Header>
-              <h5>📅 Comparación Mensual</h5>
+              <h5>🌍 Distribución por País (Top 10)</h5>
             </Card.Header>
             <Card.Body>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={monthlyComparison}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="period" />
-                  <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
-                  <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
-                  <Tooltip />
-                  <Legend />
-                  <Bar yAxisId="left" dataKey="count" fill="#8884d8" name="Vehículos" />
-                  <Bar yAxisId="right" dataKey="revenue" fill="#82ca9d" name="Ingresos (€)" />
-                </BarChart>
-              </ResponsiveContainer>
+              <Table striped bordered hover responsive>
+                <thead>
+                  <tr>
+                    <th>País</th>
+                    <th className="text-center">Vehículos</th>
+                    <th className="text-center">Ingresos</th>
+                    <th className="text-center">Pernoctas</th>
+                    <th className="text-center">Media noches/vehículo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {countryDistribution.slice(0, 10).map((item, index) => (
+                    <tr key={index}>
+                      <td><strong>{item.country}</strong></td>
+                      <td className="text-center">{item.count}</td>
+                      <td className="text-center text-success"><strong>{item.revenue.toFixed(2)} €</strong></td>
+                      <td className="text-center text-primary"><strong>{item.total_nights}</strong></td>
+                      <td className="text-center">{item.avg_nights}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </Table>
             </Card.Body>
           </Card>
         </Col>
       </Row>
 
-      {/* Distribución por País */}
+      {/* Distribución de Estancias por Duración */}
       <Row className="mb-4">
-        <Col md={8}>
+        <Col md={6}>
           <Card>
             <Card.Header>
-              <h5>🌍 Distribución por País</h5>
+              <h5>📊 Distribución de Estancias por Duración</h5>
             </Card.Header>
             <Card.Body>
               <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={countryDistribution.slice(0, 10)} layout="vertical">
+                <BarChart data={stayLengthDistribution}>
                   <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis type="number" />
-                  <YAxis dataKey="country" type="category" width={80} />
+                  <XAxis dataKey="category" />
+                  <YAxis />
                   <Tooltip />
                   <Legend />
                   <Bar dataKey="count" fill="#8884d8" name="Vehículos" />
-                  <Bar dataKey="revenue" fill="#82ca9d" name="Ingresos (€)" />
                 </BarChart>
               </ResponsiveContainer>
             </Card.Body>
           </Card>
         </Col>
-        <Col md={4}>
+
+        <Col md={6}>
           <Card>
             <Card.Header>
-              <h5>⏱️ Estancia Media por País</h5>
+              <h5>💳 Métodos de Pago</h5>
             </Card.Header>
             <Card.Body>
-              <div style={{maxHeight: '300px', overflowY: 'auto'}}>
-                {stayDuration.map((item, index) => (
-                  <div key={index} className="d-flex justify-content-between mb-2 pb-2 border-bottom">
-                    <span>{item.country}</span>
-                    <strong>{item.avg_days} días</strong>
-                  </div>
-                ))}
-              </div>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={paymentMethods}
+                    dataKey="count"
+                    nameKey="method"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={100}
+                    label
+                  >
+                    {paymentMethods.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
             </Card.Body>
           </Card>
         </Col>
@@ -311,66 +358,6 @@ function Analytics() {
                   <Tooltip />
                   <Bar dataKey="count" fill="#0088FE" name="Check-ins" />
                 </BarChart>
-              </ResponsiveContainer>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Tipos de Vehículos y Métodos de Pago */}
-      <Row className="mb-4">
-        <Col md={6}>
-          <Card>
-            <Card.Header>
-              <h5>🚗 Tipos de Vehículos</h5>
-            </Card.Header>
-            <Card.Body>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={vehicleTypes}
-                    dataKey="count"
-                    nameKey="type"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={100}
-                    label
-                  >
-                    {vehicleTypes.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </Card.Body>
-          </Card>
-        </Col>
-        <Col md={6}>
-          <Card>
-            <Card.Header>
-              <h5>💳 Métodos de Pago</h5>
-            </Card.Header>
-            <Card.Body>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={paymentMethods}
-                    dataKey="count"
-                    nameKey="method"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={100}
-                    label
-                  >
-                    {paymentMethods.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
               </ResponsiveContainer>
             </Card.Body>
           </Card>

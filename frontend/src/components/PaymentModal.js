@@ -1,13 +1,68 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Modal, Button, Form, Alert, Spinner } from 'react-bootstrap';
 import { staysAPI } from '../services/api';
 
 function PaymentModal({ show, onHide, stay, onSuccess }) {
   const [amount, setAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [checkInTime, setCheckInTime] = useState('');
+  const [checkOutTime, setCheckOutTime] = useState('');
   const [loading, setLoading] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [error, setError] = useState(null);
+  const [nights, setNights] = useState(0);
+
+  useEffect(() => {
+    if (stay) {
+      initializeTimes();
+    }
+  }, [stay]);
+
+  useEffect(() => {
+    if (checkInTime && checkOutTime) {
+      calculateNights();
+    }
+  }, [checkInTime, checkOutTime]);
+
+  const initializeTimes = () => {
+    // Fecha de entrada: desde detection_time o check_in_time si existe, o ahora
+    const checkIn = stay.check_in_time 
+      ? new Date(stay.check_in_time)
+      : stay.detection_time 
+        ? new Date(stay.detection_time)
+        : new Date();
+    
+    // Fecha de salida prevista: 3 días después de la entrada por defecto
+    const checkOut = new Date(checkIn);
+    checkOut.setDate(checkOut.getDate() + 3); // 3 noches por defecto
+    
+    setCheckInTime(formatDateTimeLocal(checkIn));
+    setCheckOutTime(formatDateTimeLocal(checkOut));
+  };
+
+  const formatDateTimeLocal = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    return `${year}-${month}-${day}T${hours}:${minutes}`;
+  };
+
+  const calculateNights = () => {
+    const checkIn = new Date(checkInTime);
+    const checkOut = new Date(checkOutTime);
+    const diffMs = checkOut - checkIn;
+    const days = diffMs / (1000 * 60 * 60 * 24);
+    const calculatedNights = Math.ceil(days);
+    setNights(calculatedNights);
+
+    // Calcular precio sugerido (10€/noche - ajusta según tu tarifa)
+    const suggestedPrice = calculatedNights * 10;
+    if (!amount) {
+      setAmount(suggestedPrice.toFixed(2));
+    }
+  };
 
   const handlePrintTicket = async () => {
     setPrinting(true);
@@ -17,14 +72,14 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
       const ticketData = {
         type: 'prepayment',
         license_plate: stay.vehicle.license_plate,
-        check_in_time: stay.check_in_time,
+        check_in_time: checkInTime,
+        check_out_time: checkOutTime,
         amount: parseFloat(amount)
       };
 
       const result = await staysAPI.printTicket(ticketData);
       
       if (result.success) {
-        // Ticket impreso correctamente (sin alert)
         console.log('Ticket impreso');
       }
 
@@ -44,16 +99,33 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
       return;
     }
 
+    if (!checkInTime || !checkOutTime) {
+      setError('Por favor, ingrese fechas válidas');
+      return;
+    }
+
+    // Validar que checkout sea posterior a checkin
+    if (new Date(checkOutTime) <= new Date(checkInTime)) {
+      setError('La fecha de salida debe ser posterior a la fecha de entrada');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      // Llamada directa al endpoint
-      const response = await fetch(`/api/stays/${stay.id}/prepayment?amount=${amount}&payment_method=${paymentMethod}`, {
+      const response = await fetch(`/api/stays/${stay.id}/prepay`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
-        }
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: parseFloat(amount),
+          payment_method: paymentMethod,
+          check_in_time: new Date(checkInTime).toISOString(),
+          check_out_time: new Date(checkOutTime).toISOString()
+        })
       });
 
       if (!response.ok) {
@@ -81,20 +153,27 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
   const handleClose = () => {
     setAmount('');
     setPaymentMethod('cash');
+    setCheckInTime('');
+    setCheckOutTime('');
     setError(null);
+    setNights(0);
     onHide();
   };
 
   if (!stay) return null;
 
   return (
-    <Modal show={show} onHide={handleClose} centered>
+    <Modal show={show} onHide={handleClose} centered size="lg">
       <Modal.Header closeButton>
-        <Modal.Title>Pago Adelantado</Modal.Title>
+        <Modal.Title>Pago Adelantado (Check-in automático)</Modal.Title>
       </Modal.Header>
       <Modal.Body>
         {error && <Alert variant="danger">{error}</Alert>}
         
+        <Alert variant="info" className="mb-3">
+          <strong>ℹ️ Importante:</strong> Al hacer un pago adelantado, el vehículo pasará automáticamente a "Activas" con la fecha de salida prevista.
+        </Alert>
+
         <div className="stay-details mb-4">
           <h5>Detalles del Vehículo</h5>
           <div className="detail-row">
@@ -113,13 +192,45 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
                 : 'No asignada'}
             </span>
           </div>
-          <div className="detail-row">
-            <strong>Entrada:</strong>
-            <span>{new Date(stay.check_in_time).toLocaleString()}</span>
-          </div>
         </div>
 
         <Form onSubmit={handleSubmit}>
+          <h5 className="mb-3">Fechas de Estancia (Editables)</h5>
+
+          <Form.Group className="mb-3">
+            <Form.Label><strong>Fecha/Hora de Entrada:</strong></Form.Label>
+            <Form.Control
+              type="datetime-local"
+              value={checkInTime}
+              onChange={(e) => setCheckInTime(e.target.value)}
+              disabled={loading || printing}
+              required
+            />
+            <Form.Text className="text-muted">
+              Fecha real o estimada de entrada
+            </Form.Text>
+          </Form.Group>
+
+          <Form.Group className="mb-3">
+            <Form.Label><strong>Fecha/Hora de Salida PREVISTA:</strong></Form.Label>
+            <Form.Control
+              type="datetime-local"
+              value={checkOutTime}
+              onChange={(e) => setCheckOutTime(e.target.value)}
+              disabled={loading || printing}
+              required
+            />
+            <Form.Text className="text-muted">
+              Fecha estimada de salida (puede ajustarse después en el checkout)
+            </Form.Text>
+          </Form.Group>
+
+          {nights > 0 && (
+            <Alert variant="secondary" className="mb-3">
+              <strong>Noches estimadas:</strong> {nights} noche{nights !== 1 ? 's' : ''}
+            </Alert>
+          )}
+
           <Form.Group className="mb-3">
             <Form.Label>Importe (€)</Form.Label>
             <Form.Control
@@ -132,6 +243,9 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
               required
               disabled={loading || printing}
             />
+            <Form.Text className="text-muted">
+              Precio calculado: {nights} noche{nights !== 1 ? 's' : ''} × 10€ = {(nights * 10).toFixed(2)}€
+            </Form.Text>
           </Form.Group>
 
           <Form.Group className="mb-3">
@@ -174,6 +288,7 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
               variant="success" 
               type="submit"
               disabled={loading || printing}
+              size="lg"
             >
               {loading ? (
                 <>
@@ -188,7 +303,7 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
                   Procesando...
                 </>
               ) : (
-                <>✓ Confirmar Pago Adelantado</>
+                <>✓ Confirmar Pago Adelantado y Check-in</>
               )}
             </Button>
           </div>

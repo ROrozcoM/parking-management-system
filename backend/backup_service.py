@@ -3,7 +3,7 @@
 Sistema de Backups Automáticos con OAuth
 - Backups de PostgreSQL cada 24h
 - Guarda localmente (7 días)
-- Sube a Google Drive (30 días)
+- Sube a Google Drive (TODOS, sin borrar)
 - Exportación mensual a Excel
 """
 
@@ -48,9 +48,8 @@ SCOPES = ['https://www.googleapis.com/auth/drive.file']
 BD_FOLDER_ID = "1Z2UGSX7s42ywkOIQB3pNqqVqBErP64Qc"  # BD-Backups
 EXCEL_FOLDER_ID = "1UxKFx8rauvAloR3z3E8qj8nsRkNfnesr"  # Excel-Historico
 
-# Retención
+# Retención LOCAL (Drive guarda TODOS)
 LOCAL_RETENTION_DAYS = 7
-DRIVE_RETENTION_DAYS = 30
 
 # ============================================================================
 # GOOGLE DRIVE HELPER (OAuth)
@@ -106,25 +105,6 @@ class GoogleDriveService:
         except Exception as e:
             print(f"❌ Error subiendo {Path(file_path).name}: {e}")
             return None
-    
-    def delete_old_files(self, folder_id, days):
-        """Eliminar archivos antiguos de Google Drive"""
-        try:
-            cutoff_date = datetime.now(ZoneInfo("Europe/Madrid")) - timedelta(days=days)
-            cutoff_str = cutoff_date.isoformat() + 'Z'
-            
-            query = f"'{folder_id}' in parents and createdTime < '{cutoff_str}' and trashed=false"
-            results = self.service.files().list(q=query, fields="files(id, name)").execute()
-            files = results.get('files', [])
-            
-            for file in files:
-                self.service.files().delete(fileId=file['id']).execute()
-                print(f"✓ Eliminado de Drive: {file['name']}")
-            
-            return len(files)
-        except Exception as e:
-            print(f"❌ Error eliminando archivos antiguos: {e}")
-            return 0
 
 # ============================================================================
 # BACKUP DE BASE DE DATOS
@@ -176,26 +156,32 @@ def create_db_backup():
         return None
 
 def cleanup_local_backups():
-    """Eliminar backups locales antiguos"""
+    """Eliminar backups locales antiguos (>7 días)"""
     print("\n🧹 Limpiando backups locales antiguos...")
     
     cutoff_date = datetime.now(ZoneInfo("Europe/Madrid")) - timedelta(days=LOCAL_RETENTION_DAYS)
     deleted = 0
     
     for backup_file in DB_BACKUP_DIR.glob("backup_*.sql"):
-        # Extraer fecha del nombre
         try:
-            date_str = backup_file.stem.split('_')[1]
-            file_date = datetime.strptime(date_str, "%Y%m%d")
-            
-            if file_date < cutoff_date:
-                backup_file.unlink()
-                deleted += 1
-                print(f"✓ Eliminado: {backup_file.name}")
+            # Extraer fecha y hora del nombre del archivo
+            parts = backup_file.stem.split('_')
+            if len(parts) >= 3:
+                date_str = parts[1]  # YYYYMMDD
+                time_str = parts[2]  # HHMMSS
+                
+                # Parsear con timezone
+                file_datetime = datetime.strptime(f"{date_str}_{time_str}", "%Y%m%d_%H%M%S")
+                file_datetime = file_datetime.replace(tzinfo=ZoneInfo("Europe/Madrid"))
+                
+                if file_datetime < cutoff_date:
+                    backup_file.unlink()
+                    deleted += 1
+                    print(f"✓ Eliminado: {backup_file.name}")
         except Exception as e:
             print(f"⚠️  No se pudo procesar {backup_file.name}: {e}")
     
-    print(f"✓ Eliminados {deleted} backups locales")
+    print(f"✓ Eliminados {deleted} backups locales (>{LOCAL_RETENTION_DAYS} días)")
     return deleted
 
 # ============================================================================
@@ -208,8 +194,6 @@ def export_monthly_excel():
     
     try:
         import pandas as pd
-        from openpyxl import load_workbook
-        from openpyxl.styles import Font, PatternFill, Alignment
     except ImportError:
         print("❌ Instala pandas y openpyxl: pip install pandas openpyxl")
         return None
@@ -234,36 +218,64 @@ def export_monthly_excel():
         
         print(f"📅 Exportando mes: {last_day_prev_month.strftime('%B %Y')}")
         
-        # Consultas
+        # ========================================================================
+        # CONSULTAS
+        # ========================================================================
+        
+        # Estancias
         stays = db.query(models.Stay).filter(
             models.Stay.check_in_time >= first_day_prev_month,
             models.Stay.check_in_time < first_day_current_month,
             models.Stay.status == models.StayStatus.COMPLETED
         ).all()
         
+        # Lista negra
         blacklist = db.query(models.Blacklist).filter(
             models.Blacklist.incident_date >= first_day_prev_month,
             models.Blacklist.incident_date < first_day_current_month
         ).all()
         
+        # Historial
         history = db.query(models.HistoryLog).filter(
             models.HistoryLog.timestamp >= first_day_prev_month,
             models.HistoryLog.timestamp < first_day_current_month
         ).all()
         
-        # Crear DataFrames
+        # Sesiones de caja
+        cash_sessions = db.query(models.CashSession).filter(
+            models.CashSession.opened_at >= first_day_prev_month,
+            models.CashSession.opened_at < first_day_current_month
+        ).all()
+        
+        # Transacciones de caja
+        cash_transactions = db.query(models.CashTransaction).filter(
+            models.CashTransaction.timestamp >= first_day_prev_month,
+            models.CashTransaction.timestamp < first_day_current_month
+        ).all()
+        
+        # ========================================================================
+        # CREAR DATAFRAMES
+        # ========================================================================
+        
+        # Estancias
         df_stays = pd.DataFrame([{
             'ID': s.id,
             'Matrícula': s.vehicle.license_plate,
+            'País': s.vehicle.country or '',
             'Tipo Vehículo': s.vehicle.vehicle_type,
             'Check-in': s.check_in_time,
             'Check-out': s.check_out_time,
             'Plaza': f"{s.parking_spot.spot_type}-{s.parking_spot.spot_number}" if s.parking_spot else '',
             'Precio': s.final_price,
+            'Método Pago': s.payment_method.value if s.payment_method else '',
+            'Importe Pagado': s.amount_paid or 0,
+            'Cambio Devuelto': s.change_given or 0,
             'Estado Pago': s.payment_status.value,
-            'Pago Adelantado': s.prepaid_amount or 0
+            'Pago Adelantado': s.prepaid_amount or 0,
+            'Registrado en Caja': 'Sí' if s.cash_registered else 'No'
         } for s in stays])
         
+        # Lista negra
         df_blacklist = pd.DataFrame([{
             'ID': b.id,
             'Matrícula': b.license_plate,
@@ -274,6 +286,7 @@ def export_monthly_excel():
             'Resuelto': 'Sí' if b.resolved else 'No'
         } for b in blacklist])
         
+        # Historial
         df_history = pd.DataFrame([{
             'ID': h.id,
             'Stay ID': h.stay_id,
@@ -283,34 +296,110 @@ def export_monthly_excel():
             'Detalles': str(h.details) if h.details else ''
         } for h in history])
         
-        # Resumen
+        # Sesiones de caja
+        df_cash_sessions = pd.DataFrame([{
+            'ID': cs.id,
+            'Fecha Apertura': cs.opened_at,
+            'Fecha Cierre': cs.closed_at,
+            'Usuario Apertura': cs.opened_by.username if cs.opened_by else '',
+            'Usuario Cierre': cs.closed_by.username if cs.closed_by else '',
+            'Importe Inicial': cs.initial_amount,
+            'Esperado Final': cs.expected_final_amount or 0,
+            'Real Final': cs.actual_final_amount or 0,
+            'Diferencia': cs.difference or 0,
+            'Estado': cs.status.value,
+            'Notas': cs.notes or ''
+        } for cs in cash_sessions])
+        
+        # Transacciones de caja
+        df_cash_transactions = pd.DataFrame([{
+            'ID': ct.id,
+            'Sesión ID': ct.cash_session_id,
+            'Fecha': ct.timestamp,
+            'Tipo': ct.transaction_type.value,
+            'Stay ID': ct.stay_id or '',
+            'Matrícula': ct.stay.vehicle.license_plate if ct.stay else '',
+            'Importe Debido': ct.amount_due,
+            'Importe Pagado': ct.amount_paid or 0,
+            'Cambio Dado': ct.change_given or 0,
+            'Método Pago': ct.payment_method.value,
+            'Usuario': ct.user.username if ct.user else '',
+            'Notas': ct.notes or ''
+        } for ct in cash_transactions])
+        
+        # ========================================================================
+        # RESUMEN
+        # ========================================================================
+        
         total_ingresos = sum([s.final_price for s in stays if s.final_price])
         total_sinpas = sum([b.amount_owed for b in blacklist])
+        
+        # Métricas de caja
+        total_efectivo = sum([
+            ct.amount_due for ct in cash_transactions 
+            if ct.transaction_type.value in ['checkout', 'prepayment'] 
+            and ct.payment_method.value == 'cash'
+        ])
+        
+        total_tarjeta = sum([
+            ct.amount_due for ct in cash_transactions 
+            if ct.transaction_type.value in ['checkout', 'prepayment'] 
+            and ct.payment_method.value == 'card'
+        ])
+        
+        total_retiros = sum([
+            ct.amount_due for ct in cash_transactions 
+            if ct.transaction_type.value == 'withdrawal'
+        ])
+        
+        sesiones_cerradas = len([cs for cs in cash_sessions if cs.status.value == 'closed'])
         
         df_resumen = pd.DataFrame([{
             'Métrica': 'Total Vehículos',
             'Valor': len(stays)
         }, {
             'Métrica': 'Total Ingresos (€)',
-            'Valor': total_ingresos
+            'Valor': f"{total_ingresos:.2f}"
+        }, {
+            'Métrica': 'Ingresos Efectivo (€)',
+            'Valor': f"{total_efectivo:.2f}"
+        }, {
+            'Métrica': 'Ingresos Tarjeta (€)',
+            'Valor': f"{total_tarjeta:.2f}"
+        }, {
+            'Métrica': 'Total Retiros (€)',
+            'Valor': f"{total_retiros:.2f}"
+        }, {
+            'Métrica': 'Sesiones de Caja',
+            'Valor': len(cash_sessions)
+        }, {
+            'Métrica': 'Sesiones Cerradas',
+            'Valor': sesiones_cerradas
         }, {
             'Métrica': 'Nuevos SINPAS',
             'Valor': len(blacklist)
         }, {
             'Métrica': 'Deuda SINPAS (€)',
-            'Valor': total_sinpas
+            'Valor': f"{total_sinpas:.2f}"
         }])
         
-        # Guardar Excel
+        # ========================================================================
+        # GUARDAR EXCEL
+        # ========================================================================
+        
         with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
             df_resumen.to_excel(writer, sheet_name='Resumen', index=False)
             df_stays.to_excel(writer, sheet_name='Estancias', index=False)
+            df_cash_sessions.to_excel(writer, sheet_name='Sesiones Caja', index=False)
+            df_cash_transactions.to_excel(writer, sheet_name='Transacciones Caja', index=False)
             df_blacklist.to_excel(writer, sheet_name='SINPAS', index=False)
             df_history.to_excel(writer, sheet_name='Historial', index=False)
         
         print(f"✓ Excel creado: {filename}")
         print(f"  - {len(stays)} estancias")
-        print(f"  - {total_ingresos:.2f}€ ingresos")
+        print(f"  - {total_ingresos:.2f}€ ingresos totales")
+        print(f"  - {total_efectivo:.2f}€ efectivo")
+        print(f"  - {len(cash_sessions)} sesiones de caja")
         print(f"  - {len(blacklist)} sinpas")
         
         return filepath
@@ -332,7 +421,7 @@ def main():
     print("=" * 60)
     print("🔄 SISTEMA DE BACKUPS AUTOMÁTICOS")
     print("=" * 60)
-    print(f"Fecha: {datetime.now(ZoneInfo("Europe/Madrid")).strftime('%Y-%m-%d %H:%M:%S')}")
+    print(f"Fecha: {datetime.now(ZoneInfo('Europe/Madrid')).strftime('%Y-%m-%d %H:%M:%S')}")
     
     # 1. Crear backup de BD
     backup_file = create_db_backup()
@@ -341,16 +430,13 @@ def main():
         print("\n❌ No se pudo crear el backup")
         return 1
     
-    # 2. Subir a Google Drive
+    # 2. Subir a Google Drive (SIN BORRAR NADA)
     drive = GoogleDriveService()
     if drive.authenticate():
         drive.upload_file(backup_file, drive.bd_folder_id)
-        
-        # Limpiar archivos antiguos en Drive
-        deleted = drive.delete_old_files(drive.bd_folder_id, DRIVE_RETENTION_DAYS)
-        print(f"✓ Eliminados {deleted} backups antiguos de Drive")
+        print("💾 Todos los backups se guardan en Drive permanentemente")
     
-    # 3. Limpiar backups locales antiguos
+    # 3. Limpiar backups locales antiguos (solo local, Drive mantiene todos)
     cleanup_local_backups()
     
     # 4. Exportación mensual (solo el día 1)

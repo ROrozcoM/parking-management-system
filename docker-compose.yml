@@ -32,6 +32,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    env_file:
+      - .env
     environment:
       - DATABASE_URL=postgresql://autocaravanascordoba:extremoduro5800@db:5432/parking_db
       - SECRET_KEY=your-secret-key-here-change-in-production
