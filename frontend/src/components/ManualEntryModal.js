@@ -12,6 +12,8 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
   const [blacklistInfo, setBlacklistInfo] = useState(null);
   const [checkingBlacklist, setCheckingBlacklist] = useState(false);
   const [forceCheckIn, setForceCheckIn] = useState(false);
+  const [customerHistory, setCustomerHistory] = useState(null);
+  const [checkingHistory, setCheckingHistory] = useState(false);
 
   // Lista completa de países
   const countries = [
@@ -79,11 +81,13 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
   const handleLicensePlateChange = async (value) => {
     setLicensePlate(value);
     setBlacklistInfo(null);
+    setCustomerHistory(null);
     setForceCheckIn(false);
     
-    // Si tiene al menos 4 caracteres, verificar lista negra
+    // Si tiene al menos 4 caracteres, verificar lista negra e historial
     if (value.length >= 4) {
       checkBlacklist(value);
+      checkCustomerHistory(value);
     }
   };
 
@@ -109,6 +113,28 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
     }
   };
 
+  const checkCustomerHistory = async (plate) => {
+    setCheckingHistory(true);
+    try {
+      const response = await fetch(`/api/stays/history/${plate}`, {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        if (data.is_returning_customer) {
+          setCustomerHistory(data);
+        }
+      }
+    } catch (err) {
+      console.error('Error checking customer history:', err);
+    } finally {
+      setCheckingHistory(false);
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     
@@ -131,6 +157,7 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
       setVehicleType('Caravan');
       setSpotType('A');
       setBlacklistInfo(null);
+      setCustomerHistory(null);
       setForceCheckIn(false);
     } catch (err) {
       setError('Failed to create manual entry');
@@ -146,6 +173,7 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
     setVehicleType('Caravan');
     setSpotType('A');
     setBlacklistInfo(null);
+    setCustomerHistory(null);
     setForceCheckIn(false);
     setError(null);
     onHide();
@@ -157,17 +185,18 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
         <Modal.Title>Add Manual Entry</Modal.Title>
       </Modal.Header>
       <Modal.Body>
-        {/* ALERTA DE LISTA NEGRA */}
-        {checkingBlacklist && (
+        {/* VERIFICANDO INFORMACIÓN */}
+        {(checkingBlacklist || checkingHistory) && (
           <Alert variant="info">
             <span className="spinner-border spinner-border-sm me-2"></span>
-            Verificando lista negra...
+            Verificando información del cliente...
           </Alert>
         )}
 
+        {/* ALERTA DE LISTA NEGRA */}
         {blacklistInfo?.is_blacklisted && (
           <Alert variant="danger" className="mb-4">
-            <h5 className="alert-heading">⚠️⚠️⚠️ ALERTA - CLIENTE MOROSO ⚠️⚠️⚠️</h5>
+            <h5 className="alert-heading">⚠️⚠️⚠️ ALERTA - ESTE HIJOPUTA SE FUE SIN PAGAR! ⚠️⚠️⚠️</h5>
             <hr />
             <div className="mb-2">
               <strong>Matrícula:</strong> <span className="text-danger fs-5">{licensePlate}</span>
@@ -197,6 +226,30 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
               onChange={(e) => setForceCheckIn(e.target.checked)}
               className="fw-bold"
             />
+          </Alert>
+        )}
+
+        {/* ALERTA DE CLIENTE HABITUAL */}
+        {customerHistory?.is_returning_customer && !blacklistInfo?.is_blacklisted && (
+          <Alert variant="success" className="mb-3">
+            <h6 className="alert-heading">✨ ¡Cliente Habitual! ✨</h6>
+            <hr />
+            <div className="row">
+              <div className="col-6 mb-2">
+                <strong>Visitas anteriores:</strong> {customerHistory.total_visits}
+              </div>
+              <div className="col-6 mb-2">
+                <strong>Última visita:</strong> {new Date(customerHistory.last_visit_date).toLocaleDateString()}
+              </div>
+              <div className="col-6 mb-2">
+                <strong>Total gastado:</strong> {customerHistory.total_spent.toFixed(2)} €
+              </div>
+              <div className="col-6 mb-2">
+                <strong>Media de estancia:</strong> {customerHistory.avg_nights} noches
+              </div>
+            </div>
+            <hr />
+            <small className="text-muted">💡 <strong>Sugerencia:</strong> Considera ofrecer descuento por fidelidad o agradecer su preferencia</small>
           </Alert>
         )}
 
@@ -265,7 +318,7 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
             <Button 
               type="submit" 
               variant="primary" 
-              disabled={loading || checkingBlacklist || (blacklistInfo?.is_blacklisted && !forceCheckIn)}
+              disabled={loading || checkingBlacklist || checkingHistory || (blacklistInfo?.is_blacklisted && !forceCheckIn)}
             >
               {loading ? 'Creating...' : 'Create Entry'}
             </Button>

@@ -4,7 +4,7 @@ from typing import List
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from app.database import get_db
-from app import models, schemas
+from app import models, schemas, crud
 from app.dependencies import get_current_active_user
 from app.crud import (
     get_pending_stays,
@@ -387,3 +387,16 @@ async def extend_stay(
             "extension": extend_data.payment_method.value
         }
     }
+
+@router.get("/history/{license_plate}")
+async def get_customer_history_endpoint(  # ← CAMBIA EL NOMBRE
+    license_plate: str,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """
+    Obtiene el historial de un cliente por matrícula.
+    Útil para identificar clientes habituales y sus estadísticas.
+    """
+    history = crud.get_customer_history(db, license_plate)  # ← Añade crud.
+    return history

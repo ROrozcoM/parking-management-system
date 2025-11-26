@@ -1677,5 +1677,73 @@ Camper Park Medina Azahara - Sistema de Caja
         print(f"❌ Error enviando email: {e}")
         raise
 
-
-
+def get_customer_history(db: Session, license_plate: str):
+    """
+    Obtiene el historial de un cliente por matrícula
+    Retorna info de visitas previas, gastos, etc.
+    """
+    from sqlalchemy import and_
+    
+    # Buscar el vehículo
+    vehicle = db.query(models.Vehicle).filter(
+        models.Vehicle.license_plate == license_plate
+    ).first()
+    
+    if not vehicle:
+        return {
+            "is_returning_customer": False,
+            "total_visits": 0,
+            "last_visit_date": None,
+            "total_spent": 0.0,
+            "avg_nights": 0.0,
+            "last_payment_status": None
+        }
+    
+    # Obtener todas las estancias completadas
+    completed_stays = db.query(models.Stay).filter(
+        and_(
+            models.Stay.vehicle_id == vehicle.id,
+            models.Stay.status == models.StayStatus.COMPLETED
+        )
+    ).order_by(models.Stay.check_out_time.desc()).all()
+    
+    total_visits = len(completed_stays)
+    
+    if total_visits == 0:
+        return {
+            "is_returning_customer": False,
+            "total_visits": 0,
+            "last_visit_date": None,
+            "total_spent": 0.0,
+            "avg_nights": 0.0,
+            "last_payment_status": None
+        }
+    
+    # Calcular estadísticas
+    total_spent = sum([stay.final_price for stay in completed_stays if stay.final_price])
+    
+    # Calcular promedio de noches
+    total_nights = 0
+    stays_with_nights = 0
+    for stay in completed_stays:
+        if stay.check_in_time and stay.check_out_time:
+            nights = (stay.check_out_time - stay.check_in_time).days
+            if nights > 0:
+                total_nights += nights
+                stays_with_nights += 1
+    
+    avg_nights = round(total_nights / stays_with_nights, 1) if stays_with_nights > 0 else 0
+    
+    # Última visita
+    last_stay = completed_stays[0]
+    last_visit_date = last_stay.check_out_time
+    last_payment_status = last_stay.payment_status.value if last_stay.payment_status else "unknown"
+    
+    return {
+        "is_returning_customer": True,
+        "total_visits": total_visits,
+        "last_visit_date": last_visit_date.isoformat() if last_visit_date else None,
+        "total_spent": float(total_spent),
+        "avg_nights": avg_nights,
+        "last_payment_status": last_payment_status
+    }
