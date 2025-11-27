@@ -1696,7 +1696,8 @@ def get_customer_history(db: Session, license_plate: str):
             "last_visit_date": None,
             "total_spent": 0.0,
             "avg_nights": 0.0,
-            "last_payment_status": None
+            "last_payment_status": None,
+            "country": None  # ← AÑADIR
         }
     
     # Obtener todas las estancias completadas
@@ -1716,7 +1717,8 @@ def get_customer_history(db: Session, license_plate: str):
             "last_visit_date": None,
             "total_spent": 0.0,
             "avg_nights": 0.0,
-            "last_payment_status": None
+            "last_payment_status": None,
+            "country": vehicle.country  # ← AÑADIR
         }
     
     # Calcular estadísticas
@@ -1745,5 +1747,39 @@ def get_customer_history(db: Session, license_plate: str):
         "last_visit_date": last_visit_date.isoformat() if last_visit_date else None,
         "total_spent": float(total_spent),
         "avg_nights": avg_nights,
-        "last_payment_status": last_payment_status
+        "last_payment_status": last_payment_status,
+        "country": vehicle.country  # ← AÑADIR
     }
+
+
+def get_recent_checkouts(db: Session, limit: int = 10):
+    """
+    Obtiene los checkouts más recientes
+    Útil para mostrar en el modal de eliminación
+    """
+    checkouts = db.query(models.Stay).filter(
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Stay.check_out_time.isnot(None)
+    ).order_by(
+        models.Stay.check_out_time.desc()
+    ).limit(limit).all()
+    
+    result = []
+    for stay in checkouts:
+        user = db.query(models.User).filter(models.User.id == stay.user_id).first()
+        username = user.username if user else "Unknown"
+        
+        result.append({
+            "stay_id": stay.id,
+            "license_plate": stay.vehicle.license_plate if stay.vehicle else "Unknown",
+            "vehicle_type": stay.vehicle.vehicle_type if stay.vehicle else "Unknown",
+            "country": stay.vehicle.country if stay.vehicle else "Unknown",
+            "check_in_time": stay.check_in_time.isoformat() if stay.check_in_time else None,
+            "check_out_time": stay.check_out_time.isoformat() if stay.check_out_time else None,
+            "final_price": stay.final_price,
+            "payment_method": stay.payment_method.value if stay.payment_method else "Unknown",
+            "user": username
+        })
+    
+    return result
+

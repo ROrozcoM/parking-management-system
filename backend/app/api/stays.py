@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
+from sqlalchemy import and_
 from typing import List
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -400,3 +401,94 @@ async def get_customer_history_endpoint(  # ← CAMBIA EL NOMBRE
     """
     history = crud.get_customer_history(db, license_plate)  # ← Añade crud.
     return history
+
+@router.delete("/{stay_id}/checkout")
+async def delete_checkout(
+    stay_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """
+    Elimina un checkout del historial.
+    - Marca el stay como DISCARDED
+    - Libera la plaza de parking
+    - Elimina la transacción de caja asociada (si existe)
+    - Registra la acción en history_logs
+    """
+    stay = db.query(models.Stay).filter(models.Stay.id == stay_id).first()
+    
+    if not stay:
+        raise HTTPException(status_code=404, detail="Stay not found")
+    
+    # Verificar que esté completado
+    if stay.status != models.StayStatus.COMPLETED:
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden eliminar checkouts de stays completados"
+        )
+    
+    # Guardar info para el log
+    license_plate = stay.vehicle.license_plate if stay.vehicle else "Unknown"
+    final_price = stay.final_price
+    check_out_time = stay.check_out_time
+    
+    # 1. MARCAR STAY COMO DISCARDED
+    stay.status = models.StayStatus.DISCARDED
+    stay.cash_registered = False
+    
+    # 2. LIBERAR PLAZA DE PARKING
+    if stay.parking_spot:
+        spot = db.query(models.ParkingSpot).filter(
+            models.ParkingSpot.id == stay.parking_spot_id
+        ).first()
+        if spot:
+            spot.is_occupied = False
+    
+    # 3. ELIMINAR TRANSACCIÓN DE CAJA (si existe)
+    cash_transaction = db.query(models.CashTransaction).filter(
+        and_(
+            models.CashTransaction.stay_id == stay_id,
+            models.CashTransaction.transaction_type == models.TransactionType.CHECKOUT
+        )
+    ).first()
+    
+    if cash_transaction:
+        db.delete(cash_transaction)
+    
+    # 4. CREAR LOG EN HISTORY
+    history_log = models.HistoryLog(
+        stay_id=stay_id,
+        action="Checkout eliminado manualmente",
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+        details={
+            "license_plate": license_plate,
+            "original_final_price": final_price,
+            "original_check_out_time": check_out_time.isoformat() if check_out_time else None,
+            "deleted_by": current_user.username,
+            "reason": "Eliminación manual desde History"
+        },
+        user_id=current_user.id
+    )
+    db.add(history_log)
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"Checkout eliminado correctamente para {license_plate}",
+        "stay_id": stay_id,
+        "deleted_by": current_user.username
+    }
+
+@router.get("/recent-checkouts")
+async def get_recent_checkouts_endpoint(
+    limit: int = Query(10, ge=1, le=100),
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """
+    Obtiene los checkouts más recientes.
+    Útil para el modal de eliminación de checkouts.
+    """
+    checkouts = crud.get_recent_checkouts(db, limit)
+    return checkouts

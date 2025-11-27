@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { historyAPI } from '../services/api';
+import DeleteCheckoutModal from '../components/DeleteCheckoutModal';
 
 function History() {
   const [logs, setLogs] = useState([]);
@@ -13,6 +14,9 @@ function History() {
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [useCustomDates, setUseCustomDates] = useState(false);
+  
+  // Modal de eliminación
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   useEffect(() => {
     fetchHistoryLogs();
@@ -59,6 +63,11 @@ function History() {
     }
   };
 
+  const handleCheckoutDeleted = () => {
+    fetchHistoryLogs();
+    fetchStats();
+  };
+
   const getActionBadgeClass = (action) => {
     const actionLower = action.toLowerCase();
     if (actionLower.includes('check-in')) return 'action-badge check-in';
@@ -98,7 +107,6 @@ function History() {
   return (
     <div className="history">
       {/*<h1 className="page-title">Activity History</h1>*/}
-
       
       {/* Filters */}
       <div className="card" style={{ marginBottom: '2rem' }}>
@@ -205,8 +213,8 @@ function History() {
             
           </div>
           
-          {/* Reset Button */}
-          <div style={{ marginTop: '1rem' }}>
+          {/* Botones - Reset y Eliminar Checkout */}
+          <div style={{ marginTop: '1rem', display: 'flex', gap: '0.5rem' }}>
             <button 
               className="btn btn-primary"
               onClick={() => {
@@ -218,6 +226,12 @@ function History() {
               }}
             >
               🔄 Reset Filters
+            </button>
+            <button 
+              className="btn btn-danger"
+              onClick={() => setShowDeleteModal(true)}
+            >
+              🗑️ Eliminar Checkout del Historial
             </button>
           </div>
         </div>
@@ -306,6 +320,13 @@ function History() {
       }}>
         Showing {logs.length} event{logs.length !== 1 ? 's' : ''}
       </div>
+
+      {/* Modal de eliminación */}
+      <DeleteCheckoutModal
+        show={showDeleteModal}
+        onHide={() => setShowDeleteModal(false)}
+        onDeleted={handleCheckoutDeleted}
+      />
     </div>
   );
 }
