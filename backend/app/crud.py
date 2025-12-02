@@ -54,7 +54,8 @@ def create_stay(db: Session, stay: schemas.StayCreate, user_id: Optional[int] = 
     if not vehicle:
         vehicle_data = {
             "license_plate": stay.license_plate,
-            "vehicle_type": stay.vehicle_type
+            "vehicle_type": stay.vehicle_type,
+            "is_rental": False
         }
         vehicle = create_vehicle(db, schemas.VehicleCreate(**vehicle_data))
     
@@ -176,15 +177,18 @@ def create_manual_stay(db: Session, stay_data: dict, user_id: int):
         vehicle_data = {
             "license_plate": stay_data["license_plate"],
             "vehicle_type": stay_data["vehicle_type"],
-            "country": stay_data.get("country", "Spain")  # Añadir country con valor por defecto
+            "country": stay_data.get("country", "Spain"),  # Añadir country con valor por defecto
+            "is_rental": stay_data.get("is_rental", False)
         }
         vehicle = create_vehicle(db, schemas.VehicleCreate(**vehicle_data))
     else:
         # Si el vehículo ya existe, actualizar el country si se proporcionó uno nuevo
         if "country" in stay_data and stay_data["country"]:
             vehicle.country = stay_data["country"]
-            db.commit()
-            db.refresh(vehicle)
+        if "is_rental" in stay_data:  
+            vehicle.is_rental = stay_data["is_rental"]  
+        db.commit()
+        db.refresh(vehicle)
     
     # Find an available parking spot of the specified type
     spot = db.query(models.ParkingSpot).filter(

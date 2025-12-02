@@ -4,65 +4,65 @@ import { Modal, Button, Form, Alert } from 'react-bootstrap';
 
 // Diccionario de nacionalidades con motes
 const NATIONALITY_INSULTS = {
-  "Spain": ["cateto nacional", "español"], // españolazo, cateto, polla con bandera, señorito del sur, torero moroso
-  "France": ["gabacho", "francés"], // franchute, rana, queso apestoso, parisino pijo, rendido de mierda
-  "Germany": ["teutón", "alemán"], // kraut, nazi, fritz, comedor de salchicha, cuadrado sin alma
-  "Italy": ["tortellini", "italiano"], // macarrón, mafioso, spaghetti, mamma mia, gesticulador, pizza con piña
-  "Portugal": ["luso", "portugués"], // portu, manolo, bacalao, luso pobre, primo atrasado
-  "United Kingdom": ["guiri", "británico"], // inglés de mierda, rosbif, limey, té a las 5, colonizador calvo
-  "Netherlands": ["fuma tulipanes", "holandés"], // coffee-shop, zuequero, tulipán marihuana, putero de Ámsterdam
-  "Belgium": ["del antiguo flandes", "belga"], // gofre gordo, país que no existe, traidor de Flandes, pederasta real
-  "Switzerland": ["primo de heidi", "suizo"], // evasor fiscal, relojero neutral, nazi con chocolate, cuchillo multiusos
-  "Austria": ["nazi con lederhosen", "austríaco"], // Hitler con yodel, tirolés nazi, primo rico del boche
-  "Poland": ["ladrón de coches", "polaco"], // robarruedas, fontanero 24h, polaco ladrón, Auschwitz tour
-  "Czech Republic": ["checoslovaco que sobró", "checo"], // cerveza barata, prostituta de Praga, checoslovaco que sobró
-  "Sweden": ["rubio del IKEA", "sueco"], // progre aburrido, vikingo vegano, rubia fría, socialismo de muebles
-  "Norway": ["vikingo", "noruego"], // vikingo rico, salmonero, fondo soberano, esquí caro
-  "Denmark": ["vikingo Lego", "danés"], // rubio feliz, hygge pagado por todos, porno vikingo
-  "Finland": ["vikingo", "finlandés"], // sisu alcohólico, alce depresivo, metalero suicida
-  "Ireland": ["guiri", "irlandés"], // patata alcohólica, católico borracho, duende verde, IRA de bar
-  "Luxembourg": ["banquero enano", "luxemburgués"], // paraíso fiscal liliputiense, país de mentira, rico por metro cuadrado
-  "Greece": ["heleno estafador de la UE", "griego"], // estafador de la UE, souvlaki deuda, heleno moroso
-  "Hungary": ["gitano con goulash", "húngaro"], // gitano con goulash, Orbán lover, paprika nazi
-  "Romania": ["gitano con goulash", "rumano"], // drácula ladrón, rey de los gitanos, Timisoara express
-  "Bulgaria": ["mafioso del este", "búlgaro"], // yogur luchador, mafia del este, primo pobre del gitano
-  "Croatia": ["primo de Luka Modric", "croata"], // nazi de playa, balcánico con WiFi, Dalmata genocida
-  "Slovenia": ["yugoslavo rico", "esloveno"], // yugoslavo rico, país que nadie ubica, primo pijo de los balcanes
-  "Slovakia": ["checo de segunda", "eslovaco"], // checo de segunda, gitano con montañas, país que sobra
-  "Serbia": ["primo de Djokovic", "serbio"], // genocida de los Balcanes, borracho con rakia, Djokovic loco
-  "Lithuania": ["báltico triste", "lituano"], // primo pobre del vikingo, católico ortodoxo, patata con frío
-  "Latvia": ["ruso que no quiere serlo", "letón"], // ruso que no quiere serlo, báltico sin playa
-  "Estonia": ["ruso con WiFi", "estonio"], // ruso con WiFi, báltico nórdico, nerd del frío
-  "Malta": ["mafioso mediterráneo", "maltés"], // casino flotante, caballero con sobrepeso, mafia mediterránea
-  "Cyprus": ["chipriota dividido", "chipriota"], // turco-griego peleado, paraíso fiscal con playa
-  "Iceland": ["vikingo arruinado", "islandés"], // volcán con deuda, elfo quebrado, Björk loca
-  "Albania": ["mafioso del Adriático", "albanés"], // mafia del Adriático, búnker lover, primo del gitano
-  "Bosnia and Herzegovina": ["yugoslavo", "bosnio"], // Srebrenica express, balcánico complicado, musulmán con rakia
-  "Montenegro": ["yugoslavo", "montenegrino"], // serbio con playa, ruso con yate
-  "North Macedonia": ["yugoslavo", "macedonio"], // griego robado, yugoslavo renombrado, Alexander el impostor
-  "Moldova": ["rumano que no quiso serlo", "moldavo"], // rumano que no quiso serlo, país más pobre de Europa
-  "Ukraine": ["primo de zelenski", "ucraniano"], // banderista, nazi del girasol, borscht con esvástica
-  "Belarus": ["tractorista ruso", "bielorruso"], // último dictador de Europa, tractorista ruso
-  "Russia": ["volchevike", "ruso"], // iván borracho, putiniano, vodka con radiación, oso polar alcohólico
-  "Turkey": ["kebab", "turco"], // genocida armenio, sultán de pacotilla, kebabero removido
-  "Morocco": ["moraco", "marroquí"], // moraco, patera, hachís con alfombra, primo que cruza
-  "Algeria": ["magrebí del desierto", "argelino"], // pirata del desierto, magrebí cortador de cabezas
-  "Tunisia": ["moro light", "tunecino"], // moro light, terrorista de playa, yihadista con resort
-  "United States": ["yanqui imperialista", "estadounidense"], // yanqui imperialista, gordo de McDonald's, cowboy retrasado
-  "Canada": ["primo educado del yanqui", "canadiense"], // sorry-man, maple pijo, policía montada marica
-  "Mexico": ["pinche mexicano", "mexicano"], // naco, frijolero, narco chaparro, tequila con gusano
-  "Brazil": ["brasuca", "brasileño"], // macaco, favelado, samba con cuchillo
-  "Argentina": ["boludo", "argentino"], // che arrogante, descendiente de barco, asado inflacionario
-  "Chile": ["paco roba mar", "chileno"], // paco ladrón de océano, terremoto con vino caja
-  "Australia": ["guiri con mullet", "australiano"], // convicto descendiente, koala borracho, canguro boxeador
-  "New Zealand": ["kiwi ovejero", "neozelandés"], // pastor de ovejas neozelandés, hobbit follador, maorí tatuado
-  "Japan": ["japo", "japonés"], // nipón kamikaze, ojos rasgados, tentáculo lover
-  "China": ["chinillo", "chino"], // virus de Wuhan, copia barata, todo a un euro
-  "South Korea": ["k-pop", "coreano"], // plástico operado, kimchi norcoreano light, Samsung esclavo
-  "India": ["gandhi", "indio"], // callcenter cagón, vaca sagrada en la calle, tech support estafador
-  "Israel": ["judío caza palestinos", "israelí"], // sionista usurero, nariz grande, lobby mundial
-  "South Africa": ["bóer", "sudafricano"], // apartheid blanco, racista con braai, mandela blanco
-  "Other": ["extranjero de mierda", "otro"], // guiri genérico, inmigrante random, persona de fuera
+  "Spain": ["cateto nacional", "español"],
+  "France": ["gabacho", "francés"],
+  "Germany": ["teutón", "alemán"],
+  "Italy": ["tortellini", "italiano"],
+  "Portugal": ["luso", "portugués"],
+  "United Kingdom": ["guiri", "británico"],
+  "Netherlands": ["fuma tulipanes", "holandés"],
+  "Belgium": ["del antiguo flandes", "belga"],
+  "Switzerland": ["primo de heidi", "suizo"],
+  "Austria": ["nazi con lederhosen", "austríaco"],
+  "Poland": ["ladrón de coches", "polaco"],
+  "Czech Republic": ["checoslovaco que sobró", "checo"],
+  "Sweden": ["rubio del IKEA", "sueco"],
+  "Norway": ["vikingo", "noruego"],
+  "Denmark": ["vikingo Lego", "danés"],
+  "Finland": ["vikingo", "finlandés"],
+  "Ireland": ["guiri", "irlandés"],
+  "Luxembourg": ["banquero enano", "luxemburgués"],
+  "Greece": ["heleno estafador de la UE", "griego"],
+  "Hungary": ["gitano con goulash", "húngaro"],
+  "Romania": ["gitano con goulash", "rumano"],
+  "Bulgaria": ["mafioso del este", "búlgaro"],
+  "Croatia": ["primo de Luka Modric", "croata"],
+  "Slovenia": ["yugoslavo rico", "esloveno"],
+  "Slovakia": ["checo de segunda", "eslovaco"],
+  "Serbia": ["primo de Djokovic", "serbio"],
+  "Lithuania": ["báltico triste", "lituano"],
+  "Latvia": ["ruso que no quiere serlo", "letón"],
+  "Estonia": ["ruso con WiFi", "estonio"],
+  "Malta": ["mafioso mediterráneo", "maltés"],
+  "Cyprus": ["chipriota dividido", "chipriota"],
+  "Iceland": ["vikingo arruinado", "islandés"],
+  "Albania": ["mafioso del Adriático", "albanés"],
+  "Bosnia and Herzegovina": ["yugoslavo", "bosnio"],
+  "Montenegro": ["yugoslavo", "montenegrino"],
+  "North Macedonia": ["yugoslavo", "macedonio"],
+  "Moldova": ["rumano que no quiso serlo", "moldavo"],
+  "Ukraine": ["primo de zelenski", "ucraniano"],
+  "Belarus": ["tractorista ruso", "bielorruso"],
+  "Russia": ["volchevike", "ruso"],
+  "Turkey": ["kebab", "turco"],
+  "Morocco": ["moraco", "marroquí"],
+  "Algeria": ["magrebí del desierto", "argelino"],
+  "Tunisia": ["moro light", "tunecino"],
+  "United States": ["yanqui imperialista", "estadounidense"],
+  "Canada": ["primo educado del yanqui", "canadiense"],
+  "Mexico": ["pinche mexicano", "mexicano"],
+  "Brazil": ["brasuca", "brasileño"],
+  "Argentina": ["boludo", "argentino"],
+  "Chile": ["paco roba mar", "chileno"],
+  "Australia": ["guiri con mullet", "australiano"],
+  "New Zealand": ["kiwi ovejero", "neozelandés"],
+  "Japan": ["japo", "japonés"],
+  "China": ["chinillo", "chino"],
+  "South Korea": ["k-pop", "coreano"],
+  "India": ["gandhi", "indio"],
+  "Israel": ["judío caza palestinos", "israelí"],
+  "South Africa": ["bóer", "sudafricano"],
+  "Other": ["extranjero de mierda", "otro"],
 };
 
 // Función para obtener mote y gentilicio
@@ -76,6 +76,7 @@ const getNationalityInsult = (country) => {
 
 function CheckInModal({ show, onHide, stay, onSuccess }) {
   const [spotType, setSpotType] = useState('A');
+  const [isRental, setIsRental] = useState(false);  // ← NUEVO ESTADO
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [blacklistInfo, setBlacklistInfo] = useState(null);
@@ -146,7 +147,7 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
       setLoading(true);
       setError(null);
       
-      await staysAPI.checkIn(stay.id, spotType);
+      await staysAPI.checkIn(stay.id, spotType, isRental);  // ← PASAR isRental
       onSuccess();
       handleClose();
     } catch (err) {
@@ -161,6 +162,7 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
     setForceCheckIn(false);
     setBlacklistInfo(null);
     setCustomerHistory(null);
+    setIsRental(false);  // ← RESET
     onHide();
   };
 
@@ -288,6 +290,21 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
               <option value="C">©️ Tipo C - Large</option>
               <option value="Special">⭐ Special - Reserved</option>
             </Form.Select>
+          </Form.Group>
+
+          {/* NUEVO: CHECKBOX DE ALQUILER */}
+          <Form.Group className="mb-3">
+            <Form.Check 
+              type="checkbox"
+              id="is-rental-checkin"
+              label="🚗 Vehículo de alquiler"
+              checked={isRental}
+              onChange={(e) => setIsRental(e.target.checked)}
+              disabled={loading || checkingBlacklist || checkingHistory}
+            />
+            <Form.Text className="text-muted">
+              Marcar si el vehículo es de una empresa de alquiler
+            </Form.Text>
           </Form.Group>
           
           {error && (

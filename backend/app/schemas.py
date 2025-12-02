@@ -67,6 +67,7 @@ class VehicleBase(BaseModel):
     brand: Optional[str] = None
     country: Optional[str] = None
     is_blacklisted: bool = False
+    is_rental: bool = False  # ← Vehículos de alquiler
 
 class VehicleCreate(VehicleBase):
     pass

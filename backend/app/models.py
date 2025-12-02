@@ -61,6 +61,7 @@ class Vehicle(Base):
     brand = Column(String, nullable=True)
     country = Column(String, nullable=True)
     is_blacklisted = Column(Boolean, default=False)
+    is_rental = Column(Boolean, default=False)  # ← Vehículos de alquiler
     
     # Relationships
     stays = relationship("Stay", back_populates="vehicle")

@@ -68,9 +68,9 @@ export const staysAPI = {
     return response.data;
   },
   
-  checkIn: async (stayId, spotType) => {
+  checkIn: async (stayId, spotType, isRental=false) => {
     const response = await api.post(`/stays/${stayId}/check-in`, null, {
-      params: { spot_type: spotType }
+      params: { spot_type: spotType, is_rental: isRental }
     });
     return response.data;
   },
@@ -89,13 +89,14 @@ export const staysAPI = {
     return response.data;
   },
   
-  createManualEntry: async (licensePlate, vehicleType, spotType, country = 'Spain') => {
+  createManualEntry: async (licensePlate, vehicleType, spotType, country = 'Spain', isRental=false) => {
     const response = await api.post('/stays/manual', null, {
       params: {
         license_plate: licensePlate,
         vehicle_type: vehicleType,
         spot_type: spotType,
-        country: country
+        country: country,
+        is_reantal: isRental
       }
     });
     return response.data;

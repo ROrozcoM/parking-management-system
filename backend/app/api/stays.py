@@ -36,9 +36,16 @@ async def list_active_stays(
 async def check_in(
     stay_id: int,
     spot_type: models.SpotType,
+    is_rental: bool = Query(False),  # ← AÑADIR
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
+    # Actualizar is_rental del vehículo ANTES del check-in
+    stay = get_stay(db, stay_id)
+    if stay and stay.vehicle:
+        stay.vehicle.is_rental = is_rental
+        db.commit()
+    
     stay = check_in_stay(db, stay_id, spot_type, current_user.id)
     if not stay:
         raise HTTPException(
@@ -208,6 +215,7 @@ async def create_manual_entry(
     vehicle_type: str = Query(..., min_length=1),
     spot_type: models.SpotType = Query(...),
     country: str = Query(..., min_length=1),
+    is_rental: bool = Query(False),  # ← AÑADIR
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
@@ -215,7 +223,8 @@ async def create_manual_entry(
         "license_plate": license_plate,
         "vehicle_type": vehicle_type,
         "spot_type": spot_type,
-        "country": country
+        "country": country,
+        "is_rental": is_rental  # ← AÑADIR
     }
     stay = create_manual_stay(db, stay_data, current_user.id)
     if not stay:
