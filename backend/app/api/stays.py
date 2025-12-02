@@ -87,10 +87,14 @@ async def check_out(
     else:
         stay.check_out_time = datetime.now(ZoneInfo("Europe/Madrid"))
     
-    # Actualizar precio y estado
+    # Actualizar precio
     stay.final_price = checkout_data.final_price
     stay.status = models.StayStatus.COMPLETED
-    stay.payment_status = models.PaymentStatus.PAID
+    
+    # ← CORREGIDO: Preservar PREPAID si ya estaba pagado por adelantado
+    if stay.payment_status != models.PaymentStatus.PREPAID:
+        stay.payment_status = models.PaymentStatus.PAID
+    
     stay.cash_registered = False  # Pendiente de registrar en caja
     
     # Liberar plaza
@@ -106,7 +110,8 @@ async def check_out(
             "final_price": checkout_data.final_price,
             "check_in_time": stay.check_in_time.isoformat() if stay.check_in_time else None,
             "check_out_time": stay.check_out_time.isoformat() if stay.check_out_time else None,
-            "nights": (stay.check_out_time - stay.check_in_time).days if stay.check_in_time and stay.check_out_time else None
+            "nights": (stay.check_out_time - stay.check_in_time).days if stay.check_in_time and stay.check_out_time else None,
+            "payment_status": stay.payment_status.value  # ← AÑADIR para trackear en logs
         },
         user_id=current_user.id
     )

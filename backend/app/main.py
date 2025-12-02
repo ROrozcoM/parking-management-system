@@ -195,7 +195,8 @@ from app.crud import (
     get_total_nights,                              # ← NUEVO
     get_nights_timeline,                           # ← NUEVO
     get_stay_length_distribution,                  # ← NUEVO
-    get_country_distribution_with_nights           # ← NUEVO
+    get_country_distribution_with_nights,           # ← NUEVO
+    get_rental_vs_owned_distribution
 )
 
 @app.get("/api/analytics/overview")
@@ -280,6 +281,13 @@ async def analytics_weekday_distribution(
     """Distribución por día de la semana"""
     return get_weekday_distribution(db)
 
+@app.get("/api/analytics/rental-vs-owned")
+async def analytics_rental_vs_owned(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user)
+):
+    """Distribución de vehículos propios vs alquiler"""
+    return get_rental_vs_owned_distribution(db)
 # ============================================================================
 # NUEVOS ENDPOINTS PARA PERNOCTAS
 # ============================================================================

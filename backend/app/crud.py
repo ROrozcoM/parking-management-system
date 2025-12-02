@@ -1060,7 +1060,35 @@ def get_country_distribution_with_nights(db: Session):
         for r in results
     ]
 
-
+def get_rental_vs_owned_distribution(db: Session):
+    """
+    Distribución de vehículos propios vs alquiler en estancias completadas
+    """
+    # Total de estancias completadas con vehículos de alquiler
+    rental_stays = db.query(func.count(models.Stay.id)).join(
+        models.Vehicle
+    ).filter(
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Vehicle.is_rental == True
+    ).scalar() or 0
+    
+    # Total de estancias completadas con vehículos propios
+    owned_stays = db.query(func.count(models.Stay.id)).join(
+        models.Vehicle
+    ).filter(
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Vehicle.is_rental == False
+    ).scalar() or 0
+    
+    total = rental_stays + owned_stays
+    
+    return {
+        "rental_count": rental_stays,
+        "owned_count": owned_stays,
+        "total": total,
+        "rental_percentage": round((rental_stays / total * 100) if total > 0 else 0, 1),
+        "owned_percentage": round((owned_stays / total * 100) if total > 0 else 0, 1)
+    }
 # ============================================================================
 # FUNCIONES PARA SISTEMA DE CAJA
 # ============================================================================

@@ -25,6 +25,7 @@ function Analytics() {
   const [stayDuration, setStayDuration] = useState([]);
   const [stayLengthDistribution, setStayLengthDistribution] = useState([]);
   const [weekdayDistribution, setWeekdayDistribution] = useState([]);
+  const [rentalVsOwned, setRentalVsOwned] = useState(null);  // ← NUEVO
 
   useEffect(() => {
     loadAllData();
@@ -66,7 +67,8 @@ function Analytics() {
         paymentMethodsData,
         stayDurationData,
         stayLengthData,
-        weekdayData
+        weekdayData,
+        rentalVsOwnedData  // ← NUEVO
       ] = await Promise.all([
         fetchWithAuth('/api/analytics/overview'),
         fetchWithAuth(`/api/analytics/revenue-timeline?days=${timeRange}`),
@@ -77,7 +79,8 @@ function Analytics() {
         fetchWithAuth('/api/analytics/payment-methods'),
         fetchWithAuth('/api/analytics/stay-duration-by-country'),
         fetchWithAuth('/api/analytics/stay-length-distribution'),
-        fetchWithAuth('/api/analytics/weekday-distribution')
+        fetchWithAuth('/api/analytics/weekday-distribution'),
+        fetchWithAuth('/api/analytics/rental-vs-owned')  // ← NUEVO
       ]);
 
       setOverview(overviewData);
@@ -90,6 +93,7 @@ function Analytics() {
       setStayDuration(stayDurationData);
       setStayLengthDistribution(stayLengthData);
       setWeekdayDistribution(weekdayData);
+      setRentalVsOwned(rentalVsOwnedData);  // ← NUEVO
 
     } catch (err) {
       if (err.message !== 'Forbidden') {
@@ -199,7 +203,7 @@ function Analytics() {
         <Col md={6}>
           <Card>
             <Card.Header>
-              <h5>📈 Ingresos Diarios (últimos {timeRange} días)</h5>
+              <h5>Ingresos Diarios (últimos {timeRange} días)</h5>
             </Card.Header>
             <Card.Body>
               <ResponsiveContainer width="100%" height={300}>
@@ -219,7 +223,7 @@ function Analytics() {
         <Col md={6}>
           <Card>
             <Card.Header>
-              <h5>🌙 Pernoctas Diarias (últimos {timeRange} días)</h5>
+              <h5>Pernoctas Diarias (últimos {timeRange} días)</h5>
             </Card.Header>
             <Card.Body>
               <ResponsiveContainer width="100%" height={300}>
@@ -242,7 +246,7 @@ function Analytics() {
         <Col md={12}>
           <Card>
             <Card.Header>
-              <h5>🌍 Distribución por País (Top 10)</h5>
+              <h5>Distribución por País (Top 10)</h5>
             </Card.Header>
             <Card.Body>
               <Table striped bordered hover responsive>
@@ -297,7 +301,7 @@ function Analytics() {
         <Col md={6}>
           <Card>
             <Card.Header>
-              <h5>💳 Métodos de Pago</h5>
+              <h5>Métodos de Pago</h5>
             </Card.Header>
             <Card.Body>
               <ResponsiveContainer width="100%" height={300}>
@@ -329,7 +333,7 @@ function Analytics() {
         <Col md={6}>
           <Card>
             <Card.Header>
-              <h5>⏰ Horas Pico de Entrada</h5>
+              <h5>Horas Pico de Entrada</h5>
             </Card.Header>
             <Card.Body>
               <ResponsiveContainer width="100%" height={300}>
@@ -347,7 +351,7 @@ function Analytics() {
         <Col md={6}>
           <Card>
             <Card.Header>
-              <h5>📅 Distribución por Día de la Semana</h5>
+              <h5>Distribución por Día de la Semana</h5>
             </Card.Header>
             <Card.Body>
               <ResponsiveContainer width="100%" height={300}>
@@ -363,6 +367,62 @@ function Analytics() {
           </Card>
         </Col>
       </Row>
+
+      {/* Panel de Vehículos Propios vs Alquiler */}
+      {rentalVsOwned && (
+        <Row className="mb-4">
+          <Col md={12}>
+            <Card>
+              <Card.Header>
+                <h5>Vehículos Propios vs Alquiler</h5>
+              </Card.Header>
+              <Card.Body>
+                <Row>
+                  <Col md={6} className="text-center border-end">
+                    <div className="p-3">
+                      <h6 className="text-muted mb-3">Vehículos Propios</h6>
+                      <h2 className="text-primary mb-2">{rentalVsOwned.owned_count}</h2>
+                      <div className="progress" style={{ height: '25px' }}>
+                        <div 
+                          className="progress-bar bg-primary" 
+                          role="progressbar" 
+                          style={{ width: `${rentalVsOwned.owned_percentage}%` }}
+                          aria-valuenow={rentalVsOwned.owned_percentage} 
+                          aria-valuemin="0" 
+                          aria-valuemax="100"
+                        >
+                          <strong>{rentalVsOwned.owned_percentage}%</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </Col>
+                  <Col md={6} className="text-center">
+                    <div className="p-3">
+                      <h6 className="text-muted mb-3">Vehículos de Alquiler</h6>
+                      <h2 className="text-warning mb-2">{rentalVsOwned.rental_count}</h2>
+                      <div className="progress" style={{ height: '25px' }}>
+                        <div 
+                          className="progress-bar bg-warning" 
+                          role="progressbar" 
+                          style={{ width: `${rentalVsOwned.rental_percentage}%` }}
+                          aria-valuenow={rentalVsOwned.rental_percentage} 
+                          aria-valuemin="0" 
+                          aria-valuemax="100"
+                        >
+                          <strong>{rentalVsOwned.rental_percentage}%</strong>
+                        </div>
+                      </div>
+                    </div>
+                  </Col>
+                </Row>
+                <div className="text-center mt-3 text-muted">
+                  <small>Total de estancias completadas: <strong>{rentalVsOwned.total}</strong></small>
+                </div>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      )}
     </div>
   );
 }
