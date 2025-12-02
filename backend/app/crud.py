@@ -177,7 +177,7 @@ def create_manual_stay(db: Session, stay_data: dict, user_id: int):
         vehicle_data = {
             "license_plate": stay_data["license_plate"],
             "vehicle_type": stay_data["vehicle_type"],
-            "country": stay_data.get("country", "Spain"),  # Añadir country con valor por defecto
+            "country": stay_data.get("country", "Spain"),
             "is_rental": stay_data.get("is_rental", False)
         }
         vehicle = create_vehicle(db, schemas.VehicleCreate(**vehicle_data))
@@ -201,13 +201,18 @@ def create_manual_stay(db: Session, stay_data: dict, user_id: int):
     if not spot:
         return None
     
+    # ← NUEVO: Usar check_in_time proporcionado o NOW por defecto
+    check_in_time = stay_data.get("check_in_time")
+    if not check_in_time:
+        check_in_time = datetime.now(ZoneInfo("Europe/Madrid"))
+    
     # Create stay with active status
     db_stay = models.Stay(
         vehicle_id=vehicle.id,
         parking_spot_id=spot.id,
         status=models.StayStatus.ACTIVE,
-        check_in_time=datetime.now(ZoneInfo("Europe/Madrid")),
-        detection_time=datetime.now(ZoneInfo("Europe/Madrid")),  # Manual entry, so detection time is now
+        check_in_time=check_in_time,  # ← USAR VARIABLE
+        detection_time=check_in_time,  # ← USAR MISMA FECHA (coherencia)
         user_id=user_id
     )
     
@@ -222,7 +227,8 @@ def create_manual_stay(db: Session, stay_data: dict, user_id: int):
     log_details = {
         "spot_type": stay_data["spot_type"].value if isinstance(stay_data["spot_type"], models.SpotType) else stay_data["spot_type"],
         "spot_number": spot.spot_number,
-        "manual_entry": True
+        "manual_entry": True,
+        "check_in_time": check_in_time.isoformat()  # ← AÑADIR al log
     }
     create_history_log(db, schemas.HistoryLogCreate(
         stay_id=db_stay.id,

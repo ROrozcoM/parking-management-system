@@ -215,16 +215,32 @@ async def create_manual_entry(
     vehicle_type: str = Query(..., min_length=1),
     spot_type: models.SpotType = Query(...),
     country: str = Query(..., min_length=1),
-    is_rental: bool = Query(False),  # ← AÑADIR
+    is_rental: bool = Query(False),
+    check_in_time: str = Query(None),  # ← AÑADIR (ISO format string, opcional)
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
+    # Parsear check_in_time si se proporciona
+    parsed_check_in_time = None
+    if check_in_time:
+        try:
+            # Intentar parsear como datetime ISO
+            parsed_check_in_time = datetime.fromisoformat(check_in_time.replace('Z', '+00:00'))
+            # Convertir a timezone Madrid
+            parsed_check_in_time = parsed_check_in_time.astimezone(ZoneInfo("Europe/Madrid"))
+        except ValueError:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid check_in_time format. Use ISO format (e.g., 2024-11-27T10:30:00)"
+            )
+    
     stay_data = {
         "license_plate": license_plate,
         "vehicle_type": vehicle_type,
         "spot_type": spot_type,
         "country": country,
-        "is_rental": is_rental  # ← AÑADIR
+        "is_rental": is_rental,
+        "check_in_time": parsed_check_in_time  # ← AÑADIR
     }
     stay = create_manual_stay(db, stay_data, current_user.id)
     if not stay:

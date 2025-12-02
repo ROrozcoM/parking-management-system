@@ -89,16 +89,21 @@ export const staysAPI = {
     return response.data;
   },
   
-  createManualEntry: async (licensePlate, vehicleType, spotType, country = 'Spain', isRental=false) => {
-    const response = await api.post('/stays/manual', null, {
-      params: {
-        license_plate: licensePlate,
-        vehicle_type: vehicleType,
-        spot_type: spotType,
-        country: country,
-        is_reantal: isRental
-      }
-    });
+  createManualEntry: async (licensePlate, vehicleType, spotType, country = 'Spain', isRental = false, checkInTime = null) => {
+    const params = {
+      license_plate: licensePlate,
+      vehicle_type: vehicleType,
+      spot_type: spotType,
+      country: country,
+      is_rental: isRental  // ← CORREGIDO: is_rental
+    };
+    
+    // Solo añadir check_in_time si se proporciona
+    if (checkInTime) {
+      params.check_in_time = checkInTime;
+    }
+    
+    const response = await api.post('/stays/manual', null, { params });
     return response.data;
   },
     // Nuevo: Registrar pago adelantado
