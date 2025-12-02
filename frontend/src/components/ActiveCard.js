@@ -7,6 +7,8 @@ import ExtendStayModal from './ExtendStayModal';
 
 function ActiveCard({ refreshData }) {
   const [activeStays, setActiveStays] = useState([]);
+  const [filteredStays, setFilteredStays] = useState([]);  // ← NUEVO
+  const [searchQuery, setSearchQuery] = useState('');  // ← NUEVO
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedStay, setSelectedStay] = useState(null);
@@ -19,11 +21,24 @@ function ActiveCard({ refreshData }) {
     fetchActiveStays();
   }, []);
 
+  // ← NUEVO: Filtrar stays cuando cambia la búsqueda
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredStays(activeStays);
+    } else {
+      const filtered = activeStays.filter(stay =>
+        stay.vehicle.license_plate.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredStays(filtered);
+    }
+  }, [searchQuery, activeStays]);
+
   const fetchActiveStays = async () => {
     try {
       setLoading(true);
       const data = await staysAPI.getActiveStays();
       setActiveStays(data);
+      setFilteredStays(data);  // ← NUEVO
       setError(null);
     } catch (err) {
       setError('Failed to fetch active stays');
@@ -116,6 +131,57 @@ function ActiveCard({ refreshData }) {
     <div className="card">
       <div className="card-header">
         <h2>Entradas Activas</h2>
+        
+        {/* ← NUEVO: BUSCADOR */}
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '1rem',
+          flex: 1,
+          justifyContent: 'center',
+          maxWidth: '400px',
+          margin: '0 auto'
+        }}>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <input
+              type="text"
+              placeholder="🔍 Buscar matrícula..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '0.5rem 2.5rem 0.5rem 1rem',
+                borderRadius: '8px',
+                border: '2px solid #e0e0e0',
+                fontSize: '0.95rem',
+                transition: 'border-color 0.2s'
+              }}
+              onFocus={(e) => e.target.style.borderColor = 'var(--primary-color)'}
+              onBlur={(e) => e.target.style.borderColor = '#e0e0e0'}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                style={{
+                  position: 'absolute',
+                  right: '0.5rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: '#999',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  padding: '0 0.5rem'
+                }}
+                title="Limpiar búsqueda"
+              >
+                ×
+              </button>
+            )}
+          </div>
+        </div>
+        
         <button 
           className="btn btn-primary"
           onClick={handleAddManualEntryClick}
@@ -123,12 +189,55 @@ function ActiveCard({ refreshData }) {
           Entrada Manual
         </button>
       </div>
+      
       <div className="card-body">
-        {activeStays.length === 0 ? (
+        {/* ← NUEVO: Mostrar contador */}
+        {searchQuery && (
+          <div style={{ 
+            marginBottom: '1rem', 
+            padding: '0.5rem', 
+            backgroundColor: '#f0f8ff',
+            borderRadius: '4px',
+            textAlign: 'center',
+            fontSize: '0.9rem',
+            color: '#555'
+          }}>
+            {filteredStays.length > 0 ? (
+              <>Mostrando <strong>{filteredStays.length}</strong> de {activeStays.length} entradas</>
+            ) : (
+              <>❌ No se encontraron resultados para "<strong>{searchQuery}</strong>"</>
+            )}
+          </div>
+        )}
+        
+        {filteredStays.length === 0 && !searchQuery ? (
           <p>No active stays</p>
+        ) : filteredStays.length === 0 && searchQuery ? (
+          <div style={{ 
+            textAlign: 'center', 
+            padding: '2rem',
+            color: '#999'
+          }}>
+            <p style={{ fontSize: '2rem', margin: '0 0 0.5rem 0' }}>🔍</p>
+            <p>No se encontraron vehículos con la matrícula "<strong>{searchQuery}</strong>"</p>
+            <button 
+              onClick={() => setSearchQuery('')}
+              style={{
+                marginTop: '1rem',
+                padding: '0.5rem 1rem',
+                background: 'var(--primary-color)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              Ver todas las entradas
+            </button>
+          </div>
         ) : (
           <div className="stay-list">
-            {activeStays.map(stay => {
+            {filteredStays.map(stay => {
               const nights = calculateNights(stay.check_in_time, stay.check_out_time);
               
               return (
@@ -149,7 +258,7 @@ function ActiveCard({ refreshData }) {
                       <strong>📅 Entrada:</strong> {formatDateTime(stay.check_in_time)}
                     </div>
                     
-                    {/* NUEVO: Mostrar fecha de salida prevista */}
+                    {/* Mostrar fecha de salida prevista */}
                     {stay.check_out_time && (
                       <div className="check-out-time mb-1">
                         <strong>📅 Salida prevista:</strong> {formatDateTime(stay.check_out_time)}
