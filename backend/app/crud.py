@@ -406,6 +406,7 @@ def checkout_with_prepayment(db: Session, stay_id: int, final_price: float, user
     stay.status = models.StayStatus.COMPLETED
     stay.check_out_time = datetime.now(ZoneInfo("Europe/Madrid"))
     stay.final_price = final_price
+    stay.amount_paid = final_price
     
     # Actualizar estado de pago
     if stay.payment_status == models.PaymentStatus.PREPAID:
