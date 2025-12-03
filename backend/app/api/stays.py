@@ -89,6 +89,7 @@ async def check_out(
     
     # Actualizar precio
     stay.final_price = checkout_data.final_price
+    stay.amount_paid = checkout_data.final_price
     stay.status = models.StayStatus.COMPLETED
     
     # ← CORREGIDO: Preservar PREPAID si ya estaba pagado por adelantado
