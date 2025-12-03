@@ -75,7 +75,7 @@ function History() {
     if (actionLower.includes('eliminado')) return 'action-badge deleted';
     if (actionLower.includes('prepayment') || actionLower.includes('prepago')) return 'action-badge prepayment';
     if (actionLower.includes('extendida') || actionLower.includes('extend')) return 'action-badge extend';
-    if (actionLower.includes('manual')) return 'action-badge manual';
+    if (actionLower.includes('manual entry') && !actionLower.includes('eliminado')) return 'action-badge manual';  // Manual pero NO eliminado
     if (actionLower.includes('discard')) return 'action-badge discard';
     if (actionLower.includes('blacklist') || actionLower.includes('sinpa')) return 'action-badge blacklist';
     return 'action-badge';
@@ -89,7 +89,7 @@ function History() {
     if (actionLower.includes('prepayment') || actionLower.includes('prepago')) return '💰';
     if (actionLower.includes('extendida') || actionLower.includes('extend')) return '➕';
     if (actionLower.includes('discard')) return '❌';
-    if (actionLower.includes('manual')) return '✍️';
+    if (actionLower.includes('manual entry') && !actionLower.includes('eliminado')) return '✍️';  // Manual pero NO eliminado
     if (actionLower.includes('blacklist') || actionLower.includes('sinpa')) return '🚫';
     return '📝';
   };
@@ -214,7 +214,7 @@ function History() {
                 <option value="extend">➕ Extensions</option>
                 <option value="eliminado">🗑️ Checkouts Eliminados</option>
                 <option value="discard">❌ Discarded</option>
-                <option value="manual">✍️ Manual Entries</option>
+                <option value="manual entry">✍️ Manual Entries</option>
                 <option value="blacklist">🚫 Blacklist / SINPA</option>
               </select>
             </div>
