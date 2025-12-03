@@ -71,19 +71,26 @@ function History() {
   const getActionBadgeClass = (action) => {
     const actionLower = action.toLowerCase();
     if (actionLower.includes('check-in')) return 'action-badge check-in';
-    if (actionLower.includes('check-out')) return 'action-badge check-out';
+    if (actionLower.includes('check-out') && !actionLower.includes('eliminado')) return 'action-badge check-out';
+    if (actionLower.includes('eliminado')) return 'action-badge deleted';
+    if (actionLower.includes('prepayment') || actionLower.includes('prepago')) return 'action-badge prepayment';
+    if (actionLower.includes('extendida') || actionLower.includes('extend')) return 'action-badge extend';
     if (actionLower.includes('manual')) return 'action-badge manual';
     if (actionLower.includes('discard')) return 'action-badge discard';
+    if (actionLower.includes('blacklist') || actionLower.includes('sinpa')) return 'action-badge blacklist';
     return 'action-badge';
   };
 
   const getActionIcon = (action) => {
     const actionLower = action.toLowerCase();
     if (actionLower.includes('check-in')) return '📥';
-    if (actionLower.includes('check-out')) return '📤';
-    if (actionLower.includes('discard')) return '🗑️';
-    if (actionLower.includes('manual')) return '➕';
-    if (actionLower.includes('blacklist')) return '🚫';
+    if (actionLower.includes('check-out') && !actionLower.includes('eliminado')) return '📤';
+    if (actionLower.includes('eliminado')) return '🗑️';
+    if (actionLower.includes('prepayment') || actionLower.includes('prepago')) return '💰';
+    if (actionLower.includes('extendida') || actionLower.includes('extend')) return '➕';
+    if (actionLower.includes('discard')) return '❌';
+    if (actionLower.includes('manual')) return '✍️';
+    if (actionLower.includes('blacklist') || actionLower.includes('sinpa')) return '🚫';
     return '📝';
   };
 
@@ -106,8 +113,6 @@ function History() {
 
   return (
     <div className="history">
-      {/*<h1 className="page-title">Activity History</h1>*/}
-      
       {/* Filters */}
       <div className="card" style={{ marginBottom: '2rem' }}>
         <div className="card-header">
@@ -191,7 +196,7 @@ function History() {
               </>
             )}
             
-            {/* Action Filter */}
+            {/* Action Filter - ACTUALIZADO CON NUEVAS OPCIONES */}
             <div>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, fontSize: '0.875rem' }}>
                 Action Type
@@ -205,9 +210,12 @@ function History() {
                 <option value="">All Actions</option>
                 <option value="check-in">📥 Check-ins</option>
                 <option value="check-out">📤 Check-outs</option>
-                <option value="discard">🗑️ Discarded</option>
-                <option value="manual">➕ Manual Entries</option>
-                <option value="blacklist">🚫 Blacklist</option>
+                <option value="prepayment">💰 Prepayments</option>
+                <option value="extend">➕ Extensions</option>
+                <option value="eliminado">🗑️ Checkouts Eliminados</option>
+                <option value="discard">❌ Discarded</option>
+                <option value="manual">✍️ Manual Entries</option>
+                <option value="blacklist">🚫 Blacklist / SINPA</option>
               </select>
             </div>
             
@@ -327,6 +335,58 @@ function History() {
         onHide={() => setShowDeleteModal(false)}
         onDeleted={handleCheckoutDeleted}
       />
+      
+      {/* Estilos CSS mejorados para badges */}
+      <style>{`
+        .action-badge {
+          padding: 0.375rem 0.75rem;
+          border-radius: 6px;
+          font-size: 0.875rem;
+          font-weight: 600;
+          display: inline-block;
+          white-space: nowrap;
+        }
+        
+        .action-badge.check-in {
+          background-color: #d4edda;
+          color: #155724;
+        }
+        
+        .action-badge.check-out {
+          background-color: #cce5ff;
+          color: #004085;
+        }
+        
+        .action-badge.prepayment {
+          background-color: #d1ecf1;
+          color: #0c5460;
+        }
+        
+        .action-badge.extend {
+          background-color: #fff3cd;
+          color: #856404;
+        }
+        
+        .action-badge.deleted {
+          background-color: #f8d7da;
+          color: #721c24;
+        }
+        
+        .action-badge.manual {
+          background-color: #e2e3e5;
+          color: #383d41;
+        }
+        
+        .action-badge.discard {
+          background-color: #f5c6cb;
+          color: #721c24;
+        }
+        
+        .action-badge.blacklist {
+          background-color: #343a40;
+          color: #ffffff;
+        }
+      `}</style>
     </div>
   );
 }
