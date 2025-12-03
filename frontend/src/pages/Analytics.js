@@ -20,12 +20,13 @@ function Analytics() {
   const [nightsTimeline, setNightsTimeline] = useState([]);
   const [totalNights, setTotalNights] = useState(null);
   const [countryDistribution, setCountryDistribution] = useState([]);
+  const [rentalTotals, setRentalTotals] = useState(null);  // ← NUEVO
   const [peakHours, setPeakHours] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
   const [stayDuration, setStayDuration] = useState([]);
   const [stayLengthDistribution, setStayLengthDistribution] = useState([]);
   const [weekdayDistribution, setWeekdayDistribution] = useState([]);
-  const [rentalVsOwned, setRentalVsOwned] = useState(null);  // ← NUEVO
+  const [rentalVsOwned, setRentalVsOwned] = useState(null);
 
   useEffect(() => {
     loadAllData();
@@ -62,13 +63,13 @@ function Analytics() {
         revenueData,
         nightsTimelineData,
         totalNightsData,
-        countryData,
+        countryData,  // ← Ahora tiene estructura diferente
         peakHoursData,
         paymentMethodsData,
         stayDurationData,
         stayLengthData,
         weekdayData,
-        rentalVsOwnedData  // ← NUEVO
+        rentalVsOwnedData
       ] = await Promise.all([
         fetchWithAuth('/api/analytics/overview'),
         fetchWithAuth(`/api/analytics/revenue-timeline?days=${timeRange}`),
@@ -80,20 +81,21 @@ function Analytics() {
         fetchWithAuth('/api/analytics/stay-duration-by-country'),
         fetchWithAuth('/api/analytics/stay-length-distribution'),
         fetchWithAuth('/api/analytics/weekday-distribution'),
-        fetchWithAuth('/api/analytics/rental-vs-owned')  // ← NUEVO
+        fetchWithAuth('/api/analytics/rental-vs-owned')
       ]);
 
       setOverview(overviewData);
       setRevenueTimeline(revenueData);
       setNightsTimeline(nightsTimelineData);
       setTotalNights(totalNightsData);
-      setCountryDistribution(countryData);
+      setCountryDistribution(countryData.by_country);  // ← CAMBIO
+      setRentalTotals(countryData.rental_totals);      // ← NUEVO
       setPeakHours(peakHoursData);
       setPaymentMethods(paymentMethodsData);
       setStayDuration(stayDurationData);
       setStayLengthDistribution(stayLengthData);
       setWeekdayDistribution(weekdayData);
-      setRentalVsOwned(rentalVsOwnedData);  // ← NUEVO
+      setRentalVsOwned(rentalVsOwnedData);
 
     } catch (err) {
       if (err.message !== 'Forbidden') {
@@ -241,7 +243,7 @@ function Analytics() {
         </Col>
       </Row>
 
-      {/* Distribución por País con Tabla Detallada */}
+      {/* Distribución por País con Tabla Detallada - ACTUALIZADA */}
       <Row className="mb-4">
         <Col md={12}>
           <Card>
@@ -257,6 +259,7 @@ function Analytics() {
                     <th className="text-center">Ingresos</th>
                     <th className="text-center">Pernoctas</th>
                     <th className="text-center">Media noches/vehículo</th>
+                    <th className="text-center">Alquiler</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -267,8 +270,21 @@ function Analytics() {
                       <td className="text-center text-success"><strong>{item.revenue.toFixed(2)} €</strong></td>
                       <td className="text-center text-primary"><strong>{item.total_nights}</strong></td>
                       <td className="text-center">{item.avg_nights}</td>
+                      <td className="text-center text-warning"><strong>{item.rental_count}</strong></td>
                     </tr>
                   ))}
+                  
+                  {/* Fila de totales de alquileres */}
+                  {rentalTotals && rentalTotals.count > 0 && (
+                    <tr style={{ backgroundColor: '#fff3cd', fontWeight: 'bold' }}>
+                      <td>🚗 TOTAL ALQUILERES</td>
+                      <td className="text-center">{rentalTotals.count}</td>
+                      <td className="text-center text-success">{rentalTotals.revenue.toFixed(2)} €</td>
+                      <td className="text-center text-primary">{rentalTotals.total_nights}</td>
+                      <td className="text-center">{rentalTotals.avg_nights}</td>
+                      <td className="text-center text-warning">{rentalTotals.rental_count}</td>
+                    </tr>
+                  )}
                 </tbody>
               </Table>
             </Card.Body>

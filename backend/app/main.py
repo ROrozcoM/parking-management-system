@@ -222,7 +222,8 @@ from app.crud import (
     get_nights_timeline,                           # ← NUEVO
     get_stay_length_distribution,                  # ← NUEVO
     get_country_distribution_with_nights,           # ← NUEVO
-    get_rental_vs_owned_distribution
+    get_rental_vs_owned_distribution,
+    get_country_distribution_with_rentals
 )
 
 @app.get("/api/analytics/overview")
@@ -249,8 +250,8 @@ async def analytics_country_distribution(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_admin_user)
 ):
-    """Distribución por países CON pernoctas"""
-    return get_country_distribution_with_nights(db)
+    """Distribución por países CON pernoctas y alquileres (ingresos reales)"""
+    return get_country_distribution_with_rentals(db)
 
 
 @app.get("/api/analytics/peak-hours")

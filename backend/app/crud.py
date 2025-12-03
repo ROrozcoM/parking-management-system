@@ -1081,6 +1081,77 @@ def get_country_distribution_with_nights(db: Session):
         for r in results
     ]
 
+from sqlalchemy import case
+
+def get_country_distribution_with_rentals(db: Session):
+    """
+    Distribución por país CON conteo de alquileres y usando amount_paid (ingresos reales)
+    """
+    results = db.query(
+        models.Vehicle.country,
+        func.count(models.Stay.id).label('count'),
+        func.sum(models.Stay.amount_paid).label('revenue'),
+        func.sum(
+            func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
+        ).label('total_nights'),
+        func.sum(
+            case(
+                (models.Vehicle.is_rental == True, 1),
+                else_=0
+            )
+        ).label('rental_count')  # ← CORREGIDO: usa func.case con lista
+    ).join(
+        models.Stay, models.Vehicle.id == models.Stay.vehicle_id
+    ).filter(
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Stay.amount_paid.isnot(None),
+        models.Vehicle.country.isnot(None),
+        models.Stay.check_in_time.isnot(None),
+        models.Stay.check_out_time.isnot(None)
+    ).group_by(
+        models.Vehicle.country
+    ).order_by(
+        func.count(models.Stay.id).desc()
+    ).all()
+    
+    # Calcular totales SOLO de alquileres
+    rental_totals = db.query(
+        func.count(models.Stay.id).label('count'),
+        func.sum(models.Stay.amount_paid).label('revenue'),
+        func.sum(
+            func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
+        ).label('total_nights')
+    ).join(
+        models.Vehicle, models.Stay.vehicle_id == models.Vehicle.id
+    ).filter(
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Vehicle.is_rental == True,
+        models.Stay.amount_paid.isnot(None),
+        models.Stay.check_in_time.isnot(None),
+        models.Stay.check_out_time.isnot(None)
+    ).first()
+    
+    return {
+        "by_country": [
+            {
+                "country": r.country or "Unknown",
+                "count": r.count,
+                "revenue": float(r.revenue or 0),
+                "total_nights": int(r.total_nights or 0),
+                "avg_nights": round(float(r.total_nights or 0) / r.count, 2) if r.count > 0 else 0,
+                "rental_count": r.rental_count
+            }
+            for r in results
+        ],
+        "rental_totals": {
+            "count": rental_totals.count or 0,
+            "revenue": float(rental_totals.revenue or 0),
+            "total_nights": int(rental_totals.total_nights or 0),
+            "avg_nights": round(float(rental_totals.total_nights or 0) / rental_totals.count, 2) if rental_totals.count > 0 else 0,
+            "rental_count": rental_totals.count or 0
+        }
+    }
+
 def get_rental_vs_owned_distribution(db: Session):
     """
     Distribución de vehículos propios vs alquiler en estancias completadas
