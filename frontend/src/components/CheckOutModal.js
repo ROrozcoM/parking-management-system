@@ -16,6 +16,10 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
   const [sinpaNotes, setSinpaNotes] = useState('');
   const [sinpaLoading, setSinpaLoading] = useState(false);
 
+  // Estados para el modal de Visitante
+  const [showVisitorModal, setShowVisitorModal] = useState(false);
+  const [visitorLoading, setVisitorLoading] = useState(false);
+
   useEffect(() => {
     if (stay && stay.check_in_time) {
       initializeTimes();
@@ -180,6 +184,50 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
     }
   };
 
+  // ============================================
+  // FUNCIÓN: Abrir modal de visitante
+  // ============================================
+  const handleVisitorClick = () => {
+    setShowVisitorModal(true);
+  };
+
+  // ============================================
+  // FUNCIÓN: Confirmar visitante desde el modal
+  // ============================================
+  const handleVisitorConfirm = async () => {
+    setVisitorLoading(true);
+    setError(null);
+
+    try {
+      // Usar el endpoint existente con reason="Visitante - No se quedó"
+      const response = await fetch(
+        `/api/stays/${stay.id}/discard?reason=${encodeURIComponent('Visitante - No pernoctó')}`, 
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error al marcar como visitante');
+      }
+
+      // Cerrar modales y refrescar lista
+      setShowVisitorModal(false);
+      onSuccess();
+      handleClose();
+
+    } catch (err) {
+      console.error('Error marking as visitor:', err);
+      setError(err.message || 'Error al procesar visitante');
+    } finally {
+      setVisitorLoading(false);
+    }
+  };
+
   const handleClose = () => {
     setFinalPrice('');
     setCheckInTime('');
@@ -188,6 +236,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
     setDuration(null);
     setSinpaNotes('');
     setShowSinpaModal(false);
+    setShowVisitorModal(false);
     onHide();
   };
 
@@ -292,6 +341,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
 
           <Form onSubmit={handleSubmit}>
             <div className="d-grid gap-2">
+              {/* Botón de imprimir ticket */}
               <Button 
                 variant="info" 
                 onClick={handlePrintTicket}
@@ -314,6 +364,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                 )}
               </Button>
 
+              {/* Botón de checkout normal */}
               <Button 
                 variant="success" 
                 type="submit"
@@ -337,6 +388,20 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                 )}
               </Button>
 
+              {/* Separador visual */}
+              <hr className="my-2" />
+              <small className="text-muted text-center">Opciones especiales</small>
+
+              {/* NUEVO: Botón de visitante */}
+              <Button 
+                variant="outline-secondary" 
+                onClick={handleVisitorClick}
+                disabled={loading || printing}
+              >
+                👋 Cliente de Paso (no se quedó)
+              </Button>
+
+              {/* Botón de SINPA */}
               <Button 
                 variant="danger" 
                 onClick={handleSinpaClick}
@@ -404,6 +469,61 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
               </>
             ) : (
               <>✓ Confirmar SINPA</>
+            )}
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal de confirmación de Visitante */}
+      <Modal show={showVisitorModal} onHide={() => setShowVisitorModal(false)} centered>
+        <Modal.Header closeButton>
+          <Modal.Title className="text-info">👋 Confirmar Visitante</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Alert variant="info">
+            <strong>¿Confirma que este vehículo es un cliente de paso?</strong>
+            <br />
+            <small>El vehículo será descartado y NO aparecerá en estadísticas.</small>
+          </Alert>
+
+          <div className="mb-3">
+            <strong>Matrícula:</strong> <span className="license-plate-display">{stay?.vehicle.license_plate}</span>
+          </div>
+          <div className="mb-3">
+            <strong>Tipo:</strong> <span>{stay?.vehicle.vehicle_type}</span>
+          </div>
+          <div className="mb-3">
+            <strong>Motivo:</strong> <span className="text-muted">Cliente de paso - No pernoctó</span>
+          </div>
+
+          <Alert variant="light" className="mb-0">
+            <small>
+              ✓ No se cobrará<br />
+              ✓ No irá a lista negra<br />
+              ✓ Plaza se liberará automáticamente<br />
+              ✓ No contabiliza en ingresos
+            </small>
+          </Alert>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowVisitorModal(false)} disabled={visitorLoading}>
+            Cancelar
+          </Button>
+          <Button variant="info" onClick={handleVisitorConfirm} disabled={visitorLoading}>
+            {visitorLoading ? (
+              <>
+                <Spinner
+                  as="span"
+                  animation="border"
+                  size="sm"
+                  role="status"
+                  aria-hidden="true"
+                  className="me-2"
+                />
+                Procesando...
+              </>
+            ) : (
+              <>✓ Confirmar Visitante</>
             )}
           </Button>
         </Modal.Footer>

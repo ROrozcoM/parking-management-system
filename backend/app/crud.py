@@ -141,6 +141,10 @@ def check_out_stay(db: Session, stay_id: int, final_price: float, user_id: int):
     db.refresh(stay)
     return stay
 
+# ============================================
+# REEMPLAZAR LA FUNCIÓN discard_stay EN crud.py
+# ============================================
+
 def discard_stay(db: Session, stay_id: int, reason: str, user_id: int):
     stay = get_stay(db, stay_id)
     if not stay:
@@ -149,8 +153,23 @@ def discard_stay(db: Session, stay_id: int, reason: str, user_id: int):
     # Update stay
     stay.status = models.StayStatus.DISCARDED
     
-    # If reason is 'sedan', blacklist the vehicle
-    if reason.lower() == 'sedan':
+    # Liberar plaza si estaba asignada
+    if stay.parking_spot:
+        stay.parking_spot.is_occupied = False
+    
+    # Determinar si debe ir a blacklist
+    # NO blacklist si: reason contiene "visitante" o "visitor" o "paso"
+    # SÍ blacklist si: reason es "sedan" u otros motivos
+    reason_lower = reason.lower()
+    should_blacklist = False
+    
+    # Palabras clave que indican visitante legítimo (NO blacklist)
+    visitor_keywords = ['visitante', 'visitor', 'paso', 'visita']
+    is_visitor = any(keyword in reason_lower for keyword in visitor_keywords)
+    
+    # Solo blacklist si NO es visitante y el motivo es específico (sedan, etc.)
+    if not is_visitor and reason_lower == 'sedan':
+        should_blacklist = True
         vehicle = db.query(models.Vehicle).filter(models.Vehicle.id == stay.vehicle_id).first()
         if vehicle:
             vehicle.is_blacklisted = True
@@ -158,11 +177,13 @@ def discard_stay(db: Session, stay_id: int, reason: str, user_id: int):
     # Create history log
     log_details = {
         "reason": reason,
-        "vehicle_blacklisted": reason.lower() == 'sedan'
+        "vehicle_blacklisted": should_blacklist,
+        "is_visitor": is_visitor
     }
+    
     create_history_log(db, schemas.HistoryLogCreate(
         stay_id=stay_id,
-        action="Stay discarded",
+        action="Stay discarded - " + ("Visitor" if is_visitor else "Other reason"),
         details=log_details
     ), user_id)
     
