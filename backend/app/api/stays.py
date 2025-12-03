@@ -111,7 +111,7 @@ async def check_out(
             "final_price": checkout_data.final_price,
             "check_in_time": stay.check_in_time.isoformat() if stay.check_in_time else None,
             "check_out_time": stay.check_out_time.isoformat() if stay.check_out_time else None,
-            "nights": (stay.check_out_time - stay.check_in_time).days if stay.check_in_time and stay.check_out_time else None,
+            "nights": max(1, (stay.check_out_time.date() - stay.check_in_time.date()).days) if stay.check_in_time and stay.check_out_time else None,
             "payment_status": stay.payment_status.value  # ← AÑADIR para trackear en logs
         },
         user_id=current_user.id
@@ -180,7 +180,7 @@ async def prepay_stay(
             "payment_method": prepayment_data.payment_method.value,
             "check_in_time": stay.check_in_time.isoformat(),
             "check_out_time_prevista": stay.check_out_time.isoformat(),
-            "nights_previstas": (stay.check_out_time - stay.check_in_time).days
+            "nights_previstas": max(1, (stay.check_out_time.date() - stay.check_in_time.date()).days)
         },
         user_id=current_user.id
     )

@@ -1056,7 +1056,9 @@ def get_country_distribution_with_nights(db: Session):
         func.count(models.Stay.id).label('count'),
         func.sum(models.Stay.final_price).label('revenue'),
         func.sum(
-            func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
+            func.ceil(
+                func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
+            )
         ).label('total_nights')
     ).join(
         models.Stay, models.Vehicle.id == models.Stay.vehicle_id
@@ -1093,7 +1095,9 @@ def get_country_distribution_with_rentals(db: Session):
         func.count(models.Stay.id).label('count'),
         func.sum(models.Stay.amount_paid).label('revenue'),
         func.sum(
-            func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
+            func.ceil(
+                func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
+            )
         ).label('total_nights'),
         func.sum(
             case(
@@ -1120,7 +1124,9 @@ def get_country_distribution_with_rentals(db: Session):
         func.count(models.Stay.id).label('count'),
         func.sum(models.Stay.amount_paid).label('revenue'),
         func.sum(
-            func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
+            func.ceil(
+                func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
+            )
         ).label('total_nights')
     ).join(
         models.Vehicle, models.Stay.vehicle_id == models.Vehicle.id
