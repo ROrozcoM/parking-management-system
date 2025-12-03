@@ -9,6 +9,9 @@ from app.crud import check_blacklist, mark_stay_as_sinpa, get_all_blacklist, res
 from app.dependencies import get_current_active_user
 from typing import Optional
 import os
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from sqlalchemy import func
 
 # Create database tables
 models.Base.metadata.create_all(bind=engine)
@@ -94,6 +97,29 @@ async def checkout_with_prepayment_endpoint(
         raise HTTPException(status_code=404, detail="Stay not found")
     return {"success": True, "message": "Checkout completed", "stay": stay}
 
+from sqlalchemy.orm import joinedload
+
+@app.get("/api/stays/checkouts-due-today")
+async def get_checkouts_due_today(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """Estancias prepagadas con salida prevista HOY"""
+    today = datetime.now(ZoneInfo("Europe/Madrid")).date()
+    
+    stays = db.query(models.Stay).options(
+        joinedload(models.Stay.vehicle),
+        joinedload(models.Stay.parking_spot)
+    ).filter(
+        models.Stay.status == models.StayStatus.ACTIVE,
+        models.Stay.payment_status == models.PaymentStatus.PREPAID,
+        func.date(models.Stay.check_out_time) == today
+    ).order_by(models.Stay.check_out_time).all()
+    
+    return {
+        "count": len(stays),
+        "stays": stays
+    }
 
 # ============================================================================
 # RUTAS PARA GESTIÓN DE LISTA NEGRA (SINPAS)

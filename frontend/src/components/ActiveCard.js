@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Modal, Button, Alert } from 'react-bootstrap';
 import { staysAPI } from '../services/api';
 import CheckOutModal from './CheckOutModal';
 import PaymentModal from './PaymentModal';
@@ -7,8 +8,8 @@ import ExtendStayModal from './ExtendStayModal';
 
 function ActiveCard({ refreshData }) {
   const [activeStays, setActiveStays] = useState([]);
-  const [filteredStays, setFilteredStays] = useState([]);  // ← NUEVO
-  const [searchQuery, setSearchQuery] = useState('');  // ← NUEVO
+  const [filteredStays, setFilteredStays] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedStay, setSelectedStay] = useState(null);
@@ -17,11 +18,16 @@ function ActiveCard({ refreshData }) {
   const [showManualEntryModal, setShowManualEntryModal] = useState(false);
   const [showExtendStayModal, setShowExtendStayModal] = useState(false);
 
+  // ← NUEVO: Estados para salidas previstas hoy
+  const [checkoutsDueToday, setCheckoutsDueToday] = useState([]);
+  const [showCheckoutsDueModal, setShowCheckoutsDueModal] = useState(false);
+  const [loadingCheckoutsDue, setLoadingCheckoutsDue] = useState(false);
+
   useEffect(() => {
     fetchActiveStays();
+    fetchCheckoutsDueToday(); // ← NUEVO
   }, []);
 
-  // ← NUEVO: Filtrar stays cuando cambia la búsqueda
   useEffect(() => {
     if (searchQuery.trim() === '') {
       setFilteredStays(activeStays);
@@ -38,13 +44,32 @@ function ActiveCard({ refreshData }) {
       setLoading(true);
       const data = await staysAPI.getActiveStays();
       setActiveStays(data);
-      setFilteredStays(data);  // ← NUEVO
+      setFilteredStays(data);
       setError(null);
     } catch (err) {
       setError('Failed to fetch active stays');
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ← NUEVO: Fetch salidas previstas hoy
+  const fetchCheckoutsDueToday = async () => {
+    try {
+      const response = await fetch('/api/stays/checkouts-due-today', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (!response.ok) throw new Error('Error fetching checkouts due today');
+      
+      const data = await response.json();
+      console.log('🔍 Checkouts due today:', data.stays); // ← DEBUG
+      setCheckoutsDueToday(data.stays || []);
+    } catch (err) {
+      console.error('Error fetching checkouts due today:', err);
     }
   };
 
@@ -67,10 +92,23 @@ function ActiveCard({ refreshData }) {
     setShowManualEntryModal(true);
   };
 
+  // ← NUEVO: Abrir modal de salidas previstas
+  const handleShowCheckoutsDue = () => {
+    setShowCheckoutsDueModal(true);
+  };
+
+  // ← NUEVO: Checkout desde el modal de salidas previstas
+  const handleCheckoutFromDueList = (stay) => {
+    setShowCheckoutsDueModal(false);
+    setSelectedStay(stay);
+    setShowCheckOutModal(true);
+  };
+
   const handleCheckOutSuccess = () => {
     setShowCheckOutModal(false);
     setSelectedStay(null);
     fetchActiveStays();
+    fetchCheckoutsDueToday(); // ← NUEVO: Actualizar lista
     if (refreshData) refreshData();
   };
 
@@ -78,6 +116,7 @@ function ActiveCard({ refreshData }) {
     setShowPaymentModal(false);
     setSelectedStay(null);
     fetchActiveStays();
+    fetchCheckoutsDueToday(); // ← NUEVO: Actualizar si se hace prepago
     if (refreshData) refreshData();
   };
 
@@ -85,6 +124,7 @@ function ActiveCard({ refreshData }) {
     setShowExtendStayModal(false);
     setSelectedStay(null);
     fetchActiveStays();
+    fetchCheckoutsDueToday(); // ← NUEVO: Actualizar si se extiende
     if (refreshData) refreshData();
   };
 
@@ -117,6 +157,14 @@ function ActiveCard({ refreshData }) {
     });
   };
 
+  const formatTime = (dateString) => {
+    if (!dateString) return '';
+    return new Date(dateString).toLocaleTimeString('es-ES', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
   const calculateNights = (checkIn, checkOut) => {
     if (!checkIn || !checkOut) return null;
     const diffMs = new Date(checkOut) - new Date(checkIn);
@@ -132,7 +180,6 @@ function ActiveCard({ refreshData }) {
       <div className="card-header">
         <h2>Entradas Activas</h2>
         
-        {/* ← NUEVO: BUSCADOR */}
         <div style={{ 
           display: 'flex', 
           alignItems: 'center', 
@@ -190,8 +237,38 @@ function ActiveCard({ refreshData }) {
         </button>
       </div>
       
+      {/* ← NUEVO: Badge de salidas previstas hoy */}
+      {checkoutsDueToday.length > 0 && (
+        <div style={{
+          backgroundColor: '#fff3cd',
+          borderBottom: '2px solid #ffc107',
+          padding: '0.75rem 1rem',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '0.5rem',
+          cursor: 'pointer',
+          transition: 'background-color 0.2s'
+        }}
+        onClick={handleShowCheckoutsDue}
+        onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#ffe69c'}
+        onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#fff3cd'}
+        >
+          <span style={{ fontSize: '1.2rem' }}>⚠️</span>
+          <strong style={{ color: '#856404' }}>
+            Salidas previstas hoy: {checkoutsDueToday.length}
+          </strong>
+          <span style={{ 
+            fontSize: '0.9rem', 
+            color: '#856404',
+            marginLeft: '0.5rem'
+          }}>
+            (Click para ver lista)
+          </span>
+        </div>
+      )}
+      
       <div className="card-body">
-        {/* ← NUEVO: Mostrar contador */}
         {searchQuery && (
           <div style={{ 
             marginBottom: '1rem', 
@@ -258,7 +335,6 @@ function ActiveCard({ refreshData }) {
                       <strong>📅 Entrada:</strong> {formatDateTime(stay.check_in_time)}
                     </div>
                     
-                    {/* Mostrar fecha de salida prevista */}
                     {stay.check_out_time && (
                       <div className="check-out-time mb-1">
                         <strong>📅 Salida prevista:</strong> {formatDateTime(stay.check_out_time)}
@@ -344,6 +420,90 @@ function ActiveCard({ refreshData }) {
         onHide={() => setShowManualEntryModal(false)}
         onSuccess={handleManualEntrySuccess}
       />
+
+      {/* ← NUEVO: Modal de salidas previstas hoy */}
+      <Modal 
+        show={showCheckoutsDueModal} 
+        onHide={() => setShowCheckoutsDueModal(false)} 
+        size="lg"
+        centered
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>⚠️ Salidas Previstas Hoy</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Alert variant="warning">
+            <strong>{checkoutsDueToday.length}</strong> cliente{checkoutsDueToday.length !== 1 ? 's' : ''} con salida prevista para hoy.
+            <br />
+            <small>Estos vehículos pagaron por adelantado y tienen checkout programado.</small>
+          </Alert>
+
+          {checkoutsDueToday.length === 0 ? (
+            <div className="text-center py-4 text-muted">
+              <p style={{ fontSize: '2rem' }}>✅</p>
+              <p>No hay salidas previstas para hoy</p>
+            </div>
+          ) : (
+            <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
+              {checkoutsDueToday.map(stay => (
+                <div 
+                  key={stay.id}
+                  style={{
+                    border: '1px solid #ddd',
+                    borderRadius: '8px',
+                    padding: '1rem',
+                    marginBottom: '0.75rem',
+                    backgroundColor: '#f8f9fa'
+                  }}
+                >
+                  <div style={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between',
+                    alignItems: 'flex-start',
+                    marginBottom: '0.5rem'
+                  }}>
+                    <div>
+                      <strong style={{ fontSize: '1.1rem' }}>
+                        {stay.vehicle?.license_plate || 'N/A'}
+                      </strong>
+                      <div style={{ fontSize: '0.9rem', color: '#666' }}>
+                        {stay.vehicle?.vehicle_type || 'N/A'} - {stay.vehicle?.country || 'N/A'}
+                      </div>
+                    </div>
+                    <span className="badge bg-success">Prepagado</span>
+                  </div>
+
+                  <div style={{ fontSize: '0.9rem', marginBottom: '0.5rem' }}>
+                    <div>
+                      <strong>Plaza:</strong> {stay.parking_spot ? `${stay.parking_spot.spot_type} - ${stay.parking_spot.spot_number}` : 'N/A'}
+                    </div>
+                    <div>
+                      <strong>Salida prevista:</strong> {formatTime(stay.check_out_time)}
+                    </div>
+                    <div>
+                      <strong>Pagado:</strong> {stay.prepaid_amount?.toFixed(2) || '0.00'} €
+                    </div>
+                  </div>
+
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    style={{ width: '100%' }}
+                    onClick={() => handleCheckoutFromDueList(stay)}
+                  >
+                    🚗 Hacer Check-out
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowCheckoutsDueModal(false)}>
+            Cerrar
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 }
