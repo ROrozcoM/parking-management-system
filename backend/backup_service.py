@@ -5,6 +5,7 @@ Sistema de Backups Automáticos con OAuth
 - Guarda localmente (7 días)
 - Sube a Google Drive (TODOS, sin borrar)
 - Exportación mensual a Excel
+- NO crashea si Google Drive falla
 """
 
 import os
@@ -430,20 +431,36 @@ def main():
         print("\n❌ No se pudo crear el backup")
         return 1
     
-    # 2. Subir a Google Drive (SIN BORRAR NADA)
-    drive = GoogleDriveService()
-    if drive.authenticate():
-        drive.upload_file(backup_file, drive.bd_folder_id)
-        print("💾 Todos los backups se guardan en Drive permanentemente")
+    # 2. Subir a Google Drive (SIN BORRAR NADA) - NO CRASHEA SI FALLA
+    try:
+        drive = GoogleDriveService()
+        if drive.authenticate():
+            drive.upload_file(backup_file, drive.bd_folder_id)
+            print("💾 Todos los backups se guardan en Drive permanentemente")
+        else:
+            print("⚠️  No se pudo autenticar con Google Drive")
+            print("✓ Backup local guardado correctamente")
+    except Exception as e:
+        print(f"⚠️  Error con Google Drive: {e}")
+        print("✓ Backup local guardado correctamente")
     
     # 3. Limpiar backups locales antiguos (solo local, Drive mantiene todos)
     cleanup_local_backups()
     
-    # 4. Exportación mensual (solo el día 1)
+    # 4. Exportación mensual (solo el día 1) - TAMBIÉN CON TRY/EXCEPT
     if datetime.now(ZoneInfo("Europe/Madrid")).day == 1:
-        excel_file = export_monthly_excel()
-        if excel_file and drive.service:
-            drive.upload_file(excel_file, drive.excel_folder_id)
+        try:
+            excel_file = export_monthly_excel()
+            if excel_file:
+                try:
+                    drive = GoogleDriveService()
+                    if drive.authenticate():
+                        drive.upload_file(excel_file, drive.excel_folder_id)
+                except Exception as e:
+                    print(f"⚠️  No se pudo subir Excel a Drive: {e}")
+                    print("✓ Excel local guardado correctamente")
+        except Exception as e:
+            print(f"⚠️  Error creando Excel mensual: {e}")
     
     print("\n" + "=" * 60)
     print("✅ BACKUP COMPLETADO")
