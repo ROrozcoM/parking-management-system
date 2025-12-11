@@ -345,3 +345,99 @@ async def analytics_stay_length_distribution(
 ):
     """Distribución de estancias por duración"""
     return get_stay_length_distribution(db)
+
+@app.get("/api/analytics/payment-methods-detailed")
+async def analytics_payment_methods_detailed(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user)
+):
+    """Desglose detallado de métodos de pago con transacciones"""
+    
+    # Obtener todas las estancias completadas
+    completed_stays = db.query(models.Stay).filter(
+        models.Stay.status == models.StayStatus.COMPLETED
+    ).all()
+    
+    # Calcular totales por método
+    cash_total = sum(
+        stay.amount_paid or 0 
+        for stay in completed_stays 
+        if stay.payment_method == models.PaymentMethod.CASH
+    )
+    
+    card_total = sum(
+        stay.amount_paid or 0 
+        for stay in completed_stays 
+        if stay.payment_method == models.PaymentMethod.CARD
+    )
+    
+    transfer_total = sum(
+        stay.amount_paid or 0 
+        for stay in completed_stays 
+        if stay.payment_method == models.PaymentMethod.TRANSFER
+    )
+    
+    # Contar transacciones
+    cash_count = sum(
+        1 for stay in completed_stays 
+        if stay.payment_method == models.PaymentMethod.CASH
+    )
+    
+    card_count = sum(
+        1 for stay in completed_stays 
+        if stay.payment_method == models.PaymentMethod.CARD
+    )
+    
+    transfer_count = sum(
+        1 for stay in completed_stays 
+        if stay.payment_method == models.PaymentMethod.TRANSFER
+    )
+    
+    # Detalles de transferencias
+    transfer_transactions = []
+    for stay in completed_stays:
+        if stay.payment_method == models.PaymentMethod.TRANSFER:
+            transfer_transactions.append({
+                "license_plate": stay.vehicle.license_plate,
+                "country": stay.vehicle.country or "Unknown",
+                "amount": stay.amount_paid or 0,
+                "check_out_time": stay.check_out_time.isoformat() if stay.check_out_time else None,
+                "check_in_time": stay.check_in_time.isoformat() if stay.check_in_time else None
+            })
+    
+    # Detalles de tarjeta
+    card_transactions = []
+    for stay in completed_stays:
+        if stay.payment_method == models.PaymentMethod.CARD:
+            card_transactions.append({
+                "license_plate": stay.vehicle.license_plate,
+                "country": stay.vehicle.country or "Unknown",
+                "amount": stay.amount_paid or 0,
+                "check_out_time": stay.check_out_time.isoformat() if stay.check_out_time else None,
+                "check_in_time": stay.check_in_time.isoformat() if stay.check_in_time else None
+            })
+    
+    # Ordenar por fecha
+    transfer_transactions.sort(key=lambda x: x["check_out_time"] or "", reverse=True)
+    card_transactions.sort(key=lambda x: x["check_out_time"] or "", reverse=True)
+    
+    return {
+        "totals": {
+            "cash": {
+                "amount": round(cash_total, 2),
+                "count": cash_count
+            },
+            "card": {
+                "amount": round(card_total, 2),
+                "count": card_count
+            },
+            "transfer": {
+                "amount": round(transfer_total, 2),
+                "count": transfer_count
+            }
+        },
+        "transactions": {
+            "transfer": transfer_transactions,
+            "card": card_transactions
+        }
+    }

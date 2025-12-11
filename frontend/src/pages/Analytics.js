@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Alert, Spinner, Card, Row, Col, ButtonGroup, Button, Table } from 'react-bootstrap';
+import { Alert, Spinner, Card, Row, Col, ButtonGroup, Button, Table, Nav } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -12,6 +12,7 @@ function Analytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [timeRange, setTimeRange] = useState(30); // días
+  const [activePaymentTab, setActivePaymentTab] = useState('transfer'); // transfer o card
   const navigate = useNavigate();
 
   // Estados para cada tipo de datos
@@ -20,9 +21,10 @@ function Analytics() {
   const [nightsTimeline, setNightsTimeline] = useState([]);
   const [totalNights, setTotalNights] = useState(null);
   const [countryDistribution, setCountryDistribution] = useState([]);
-  const [rentalTotals, setRentalTotals] = useState(null);  // ← NUEVO
+  const [rentalTotals, setRentalTotals] = useState(null);
   const [peakHours, setPeakHours] = useState([]);
-  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState([]);  // ← Para Pie Chart original
+  const [paymentMethodsDetailed, setPaymentMethodsDetailed] = useState(null);  // ← NUEVO
   const [stayDuration, setStayDuration] = useState([]);
   const [stayLengthDistribution, setStayLengthDistribution] = useState([]);
   const [weekdayDistribution, setWeekdayDistribution] = useState([]);
@@ -63,9 +65,10 @@ function Analytics() {
         revenueData,
         nightsTimelineData,
         totalNightsData,
-        countryData,  // ← Ahora tiene estructura diferente
+        countryData,
         peakHoursData,
-        paymentMethodsData,
+        paymentMethodsData,  // ← Original (para Pie Chart)
+        paymentMethodsDetailedData,  // ← NUEVO (para Cards + Tabla)
         stayDurationData,
         stayLengthData,
         weekdayData,
@@ -77,7 +80,8 @@ function Analytics() {
         fetchWithAuth('/api/analytics/total-nights'),
         fetchWithAuth('/api/analytics/country-distribution'),
         fetchWithAuth('/api/analytics/peak-hours'),
-        fetchWithAuth('/api/analytics/payment-methods'),
+        fetchWithAuth('/api/analytics/payment-methods'),  // ← Original
+        fetchWithAuth('/api/analytics/payment-methods-detailed'),  // ← NUEVO
         fetchWithAuth('/api/analytics/stay-duration-by-country'),
         fetchWithAuth('/api/analytics/stay-length-distribution'),
         fetchWithAuth('/api/analytics/weekday-distribution'),
@@ -88,10 +92,11 @@ function Analytics() {
       setRevenueTimeline(revenueData);
       setNightsTimeline(nightsTimelineData);
       setTotalNights(totalNightsData);
-      setCountryDistribution(countryData.by_country);  // ← CAMBIO
-      setRentalTotals(countryData.rental_totals);      // ← NUEVO
+      setCountryDistribution(countryData.by_country);
+      setRentalTotals(countryData.rental_totals);
       setPeakHours(peakHoursData);
-      setPaymentMethods(paymentMethodsData);
+      setPaymentMethods(paymentMethodsData);  // ← Original (Pie Chart)
+      setPaymentMethodsDetailed(paymentMethodsDetailedData);  // ← NUEVO (Cards + Tabla)
       setStayDuration(stayDurationData);
       setStayLengthDistribution(stayLengthData);
       setWeekdayDistribution(weekdayData);
@@ -200,6 +205,39 @@ function Analytics() {
         </Col>
       </Row>
 
+      {/* NUEVO: KPIs de Métodos de Pago - Compactos */}
+      {paymentMethodsDetailed && (
+        <Row className="mb-3">
+          <Col md={4}>
+            <Card className="text-center border-success">
+              <Card.Body className="py-2">
+                <small className="text-muted d-block mb-1">💵 Efectivo</small>
+                <h5 className="text-success mb-0">{paymentMethodsDetailed.totals.cash.amount.toFixed(2)} €</h5>
+                <small className="text-muted">({paymentMethodsDetailed.totals.cash.count} pagos)</small>
+              </Card.Body>
+            </Card>
+          </Col>
+          <Col md={4}>
+            <Card className="text-center border-info">
+              <Card.Body className="py-2">
+                <small className="text-muted d-block mb-1">💳 Tarjeta</small>
+                <h5 className="text-info mb-0">{paymentMethodsDetailed.totals.card.amount.toFixed(2)} €</h5>
+                <small className="text-muted">({paymentMethodsDetailed.totals.card.count} pagos)</small>
+              </Card.Body>
+            </Card>
+          </Col>
+          <Col md={4}>
+            <Card className="text-center border-primary">
+              <Card.Body className="py-2">
+                <small className="text-muted d-block mb-1">🏦 Transferencia</small>
+                <h5 className="text-primary mb-0">{paymentMethodsDetailed.totals.transfer.amount.toFixed(2)} €</h5>
+                <small className="text-muted">({paymentMethodsDetailed.totals.transfer.count} pagos)</small>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      )}
+
       {/* Gráficos de Línea: Ingresos y Pernoctas */}
       <Row className="mb-4">
         <Col md={6}>
@@ -243,7 +281,7 @@ function Analytics() {
         </Col>
       </Row>
 
-      {/* Distribución por País con Tabla Detallada - ACTUALIZADA */}
+      {/* Distribución por País con Tabla Detallada */}
       <Row className="mb-4">
         <Col md={12}>
           <Card>
@@ -274,7 +312,6 @@ function Analytics() {
                     </tr>
                   ))}
                   
-                  {/* Fila de totales de alquileres */}
                   {rentalTotals && rentalTotals.count > 0 && (
                     <tr style={{ backgroundColor: '#fff3cd', fontWeight: 'bold' }}>
                       <td>🚗 TOTAL ALQUILERES</td>
@@ -292,7 +329,7 @@ function Analytics() {
         </Col>
       </Row>
 
-      {/* Distribución de Estancias por Duración */}
+      {/* Distribución de Estancias por Duración y Métodos de Pago */}
       <Row className="mb-4">
         <Col md={6}>
           <Card>
@@ -314,6 +351,7 @@ function Analytics() {
           </Card>
         </Col>
 
+        {/* Pie Chart Original: Payment Status */}
         <Col md={6}>
           <Card>
             <Card.Header>
@@ -343,6 +381,119 @@ function Analytics() {
           </Card>
         </Col>
       </Row>
+
+      {/* NUEVA: Tabla de Transacciones Electrónicas con Pestañas */}
+      {paymentMethodsDetailed && (
+        <Row className="mb-4">
+          <Col md={12}>
+            <Card>
+              <Card.Header>
+                <h5>💳 Pagos Electrónicos</h5>
+              </Card.Header>
+              <Card.Body>
+                <Nav variant="tabs" className="mb-3">
+                  <Nav.Item>
+                    <Nav.Link 
+                      active={activePaymentTab === 'transfer'}
+                      onClick={() => setActivePaymentTab('transfer')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      🏦 Transferencias ({paymentMethodsDetailed.totals.transfer.count})
+                    </Nav.Link>
+                  </Nav.Item>
+                  <Nav.Item>
+                    <Nav.Link 
+                      active={activePaymentTab === 'card'}
+                      onClick={() => setActivePaymentTab('card')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      💳 Tarjeta ({paymentMethodsDetailed.totals.card.count})
+                    </Nav.Link>
+                  </Nav.Item>
+                </Nav>
+
+                {/* Contenido de Transferencias */}
+                {activePaymentTab === 'transfer' && (
+                  <>
+                    {paymentMethodsDetailed.transactions.transfer.length > 0 ? (
+                      <Table striped bordered hover responsive>
+                        <thead>
+                          <tr>
+                            <th>Matrícula</th>
+                            <th>País</th>
+                            <th className="text-end">Importe</th>
+                            <th>Check-in</th>
+                            <th>Check-out</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paymentMethodsDetailed.transactions.transfer.map((tx, index) => (
+                            <tr key={index}>
+                              <td><strong>{tx.license_plate}</strong></td>
+                              <td>{tx.country}</td>
+                              <td className="text-end text-success"><strong>{tx.amount.toFixed(2)} €</strong></td>
+                              <td>{tx.check_in_time ? new Date(tx.check_in_time).toLocaleString('es-ES') : 'N/A'}</td>
+                              <td>{tx.check_out_time ? new Date(tx.check_out_time).toLocaleString('es-ES') : 'N/A'}</td>
+                            </tr>
+                          ))}
+                          <tr style={{ backgroundColor: '#f8f9fa', fontWeight: 'bold' }}>
+                            <td colSpan="2" className="text-end">TOTAL:</td>
+                            <td className="text-end text-success">
+                              {paymentMethodsDetailed.totals.transfer.amount.toFixed(2)} €
+                            </td>
+                            <td colSpan="2"></td>
+                          </tr>
+                        </tbody>
+                      </Table>
+                    ) : (
+                      <Alert variant="info">No hay pagos por transferencia registrados</Alert>
+                    )}
+                  </>
+                )}
+
+                {/* Contenido de Tarjeta */}
+                {activePaymentTab === 'card' && (
+                  <>
+                    {paymentMethodsDetailed.transactions.card.length > 0 ? (
+                      <Table striped bordered hover responsive>
+                        <thead>
+                          <tr>
+                            <th>Matrícula</th>
+                            <th>País</th>
+                            <th className="text-end">Importe</th>
+                            <th>Check-in</th>
+                            <th>Check-out</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {paymentMethodsDetailed.transactions.card.map((tx, index) => (
+                            <tr key={index}>
+                              <td><strong>{tx.license_plate}</strong></td>
+                              <td>{tx.country}</td>
+                              <td className="text-end text-info"><strong>{tx.amount.toFixed(2)} €</strong></td>
+                              <td>{tx.check_in_time ? new Date(tx.check_in_time).toLocaleString('es-ES') : 'N/A'}</td>
+                              <td>{tx.check_out_time ? new Date(tx.check_out_time).toLocaleString('es-ES') : 'N/A'}</td>
+                            </tr>
+                          ))}
+                          <tr style={{ backgroundColor: '#f8f9fa', fontWeight: 'bold' }}>
+                            <td colSpan="2" className="text-end">TOTAL:</td>
+                            <td className="text-end text-info">
+                              {paymentMethodsDetailed.totals.card.amount.toFixed(2)} €
+                            </td>
+                            <td colSpan="2"></td>
+                          </tr>
+                        </tbody>
+                      </Table>
+                    ) : (
+                      <Alert variant="info">No hay pagos con tarjeta registrados</Alert>
+                    )}
+                  </>
+                )}
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      )}
 
       {/* Horas Pico y Días de la Semana */}
       <Row className="mb-4">
