@@ -211,7 +211,7 @@ function Analytics() {
           <Col md={4}>
             <Card className="text-center border-success">
               <Card.Body className="py-2">
-                <small className="text-muted d-block mb-1">💵 Efectivo</small>
+                <small className="text-muted d-block mb-1">Efectivo</small>
                 <h5 className="text-success mb-0">{paymentMethodsDetailed.totals.cash.amount.toFixed(2)} €</h5>
                 <small className="text-muted">({paymentMethodsDetailed.totals.cash.count} pagos)</small>
               </Card.Body>
@@ -220,7 +220,7 @@ function Analytics() {
           <Col md={4}>
             <Card className="text-center border-info">
               <Card.Body className="py-2">
-                <small className="text-muted d-block mb-1">💳 Tarjeta</small>
+                <small className="text-muted d-block mb-1">Tarjeta</small>
                 <h5 className="text-info mb-0">{paymentMethodsDetailed.totals.card.amount.toFixed(2)} €</h5>
                 <small className="text-muted">({paymentMethodsDetailed.totals.card.count} pagos)</small>
               </Card.Body>
@@ -229,7 +229,7 @@ function Analytics() {
           <Col md={4}>
             <Card className="text-center border-primary">
               <Card.Body className="py-2">
-                <small className="text-muted d-block mb-1">🏦 Transferencia</small>
+                <small className="text-muted d-block mb-1">Transferencia</small>
                 <h5 className="text-primary mb-0">{paymentMethodsDetailed.totals.transfer.amount.toFixed(2)} €</h5>
                 <small className="text-muted">({paymentMethodsDetailed.totals.transfer.count} pagos)</small>
               </Card.Body>
@@ -314,7 +314,7 @@ function Analytics() {
                   
                   {rentalTotals && rentalTotals.count > 0 && (
                     <tr style={{ backgroundColor: '#fff3cd', fontWeight: 'bold' }}>
-                      <td>🚗 TOTAL ALQUILERES</td>
+                      <td>TOTAL ALQUILERES</td>
                       <td className="text-center">{rentalTotals.count}</td>
                       <td className="text-center text-success">{rentalTotals.revenue.toFixed(2)} €</td>
                       <td className="text-center text-primary">{rentalTotals.total_nights}</td>
@@ -334,7 +334,7 @@ function Analytics() {
         <Col md={6}>
           <Card>
             <Card.Header>
-              <h5>📊 Distribución de Estancias por Duración</h5>
+              <h5>Distribución de Estancias por Duración</h5>
             </Card.Header>
             <Card.Body>
               <ResponsiveContainer width="100%" height={300}>
@@ -388,7 +388,7 @@ function Analytics() {
           <Col md={12}>
             <Card>
               <Card.Header>
-                <h5>💳 Pagos Electrónicos</h5>
+                <h5>Pagos Electrónicos</h5>
               </Card.Header>
               <Card.Body>
                 <Nav variant="tabs" className="mb-3">
