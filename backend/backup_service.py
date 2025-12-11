@@ -137,7 +137,7 @@ def create_db_backup():
             '-p', db_port,
             '-U', db_user,
             '-d', db_name,
-            '-F', 'c',  # Formato custom (comprimido)
+            '-F', 'p',  # Formato plano (plain)
             '-f', str(filepath)
         ]
         

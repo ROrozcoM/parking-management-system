@@ -812,6 +812,440 @@ docker-compose exec backend python3 create_parking_spots.py
 
 ---
 
+# 📦 Tutorial: Backups y Restauración de Base de Datos
+
+## 1️⃣ Ver Backups Disponibles
+
+### Ver backups locales:
+```bash
+docker-compose exec backend ls -lh /app/backups/database/
+```
+
+### Ver el más reciente:
+```bash
+docker-compose exec backend ls -lt /app/backups/database/ | head -2
+```
+
+---
+
+## 2️⃣ Restaurar Backup en el Mismo PC
+
+### Paso 1: Para el backend (opcional, por seguridad)
+```bash
+docker-compose stop backend
+```
+
+### Paso 2: Restaurar el backup más reciente
+```bash
+# Reemplaza YYYYMMDD_HHMMSS con la fecha del backup
+docker-compose exec db pg_restore \
+  -U autocaravanascordoba \
+  -d parking_db \
+  --clean \
+  --if-exists \
+  /app/backups/database/backup_YYYYMMDD_HHMMSS.sql
+```
+
+**Ejemplo:**
+```bash
+docker-compose exec db pg_restore \
+  -U autocaravanascordoba \
+  -d parking_db \
+  --clean \
+  --if-exists \
+  /app/backups/database/backup_20251208_133750.sql
+```
+
+### Paso 3: Reinicia el backend
+```bash
+docker-compose start backend
+```
+
+## 🔧 Corrección de Precios con Decimales
+
+Guía rápida para detectar y corregir precios que contienen decimales incorrectos (generados por error al usar el scroll del ratón en los campos de precio).
+
+---
+
+## 1️⃣ Detectar Precios con Decimales
+
+Ejecuta esta query para encontrar todos los checkouts con precios que tienen decimales (distintos de .0 o .00):
+
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "
+SELECT 
+    v.license_plate, 
+    v.country, 
+    s.final_price, 
+    s.amount_paid,
+    s.check_in_time::date as check_in,
+    s.check_out_time::date as check_out
+FROM stays s 
+JOIN vehicles v ON s.vehicle_id = v.id 
+WHERE s.status = 'COMPLETED' 
+AND (
+    CAST(s.final_price AS TEXT) LIKE '%.%' AND CAST(s.final_price AS TEXT) NOT LIKE '%.0' AND CAST(s.final_price AS TEXT) NOT LIKE '%.00'
+    OR 
+    CAST(s.amount_paid AS TEXT) LIKE '%.%' AND CAST(s.amount_paid AS TEXT) NOT LIKE '%.0' AND CAST(s.amount_paid AS TEXT) NOT LIKE '%.00'
+)
+ORDER BY s.check_out_time DESC;
+"
+```
+
+**Ejemplo de salida:**
+```
+ license_plate | country | final_price | amount_paid |  check_in  | check_out  
+---------------+---------+-------------+-------------+------------+------------
+ FA040GJ       | France  |       35.98 |       35.98 | 2025-12-06 | 2025-12-08
+ MBKX144       | Germany |       13.99 |       13.99 | 2025-12-07 | 2025-12-08
+```
+
+---
+
+## 2️⃣ Redondear Precios
+
+Una vez identificadas las matrículas con precios incorrectos, redondéalas:
+
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "
+UPDATE stays s
+SET 
+  final_price = ROUND(s.final_price),
+  amount_paid = ROUND(s.amount_paid)
+FROM vehicles v
+WHERE s.vehicle_id = v.id
+  AND v.license_plate IN (
+    'MATRICULA1', 'MATRICULA2', 'MATRICULA3'
+  )
+  AND s.status = 'COMPLETED'
+RETURNING v.license_plate, s.final_price, s.amount_paid;
+"
+```
+
+**Reemplaza `'MATRICULA1', 'MATRICULA2', 'MATRICULA3'`** con las matrículas detectadas en el paso 1.
+
+**Ejemplo:**
+```bash
+# Si detectaste: FA040GJ (35.98), MBKX144 (13.99), 7113MMS (17.98)
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "
+UPDATE stays s
+SET 
+  final_price = ROUND(s.final_price),
+  amount_paid = ROUND(s.amount_paid)
+FROM vehicles v
+WHERE s.vehicle_id = v.id
+  AND v.license_plate IN (
+    'FA040GJ', 'MBKX144', '7113MMS'
+  )
+  AND s.status = 'COMPLETED'
+RETURNING v.license_plate, s.final_price, s.amount_paid;
+"
+```
+
+**Resultado:**
+```
+ license_plate | final_price | amount_paid 
+---------------+-------------+-------------
+ FA040GJ       |          36 |          36
+ MBKX144       |          14 |          14
+ 7113MMS       |          18 |          18
+```
+
+---
+
+## 3️⃣ Verificar Corrección
+
+Vuelve a ejecutar la query del **Paso 1** para confirmar que no quedan precios con decimales:
+
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "
+SELECT 
+    v.license_plate, 
+    s.final_price, 
+    s.amount_paid
+FROM stays s 
+JOIN vehicles v ON s.vehicle_id = v.id 
+WHERE s.status = 'COMPLETED' 
+AND (
+    CAST(s.final_price AS TEXT) LIKE '%.%' AND CAST(s.final_price AS TEXT) NOT LIKE '%.0' AND CAST(s.final_price AS TEXT) NOT LIKE '%.00'
+    OR 
+    CAST(s.amount_paid AS TEXT) LIKE '%.%' AND CAST(s.amount_paid AS TEXT) NOT LIKE '%.0' AND CAST(s.amount_paid AS TEXT) NOT LIKE '%.00'
+)
+ORDER BY s.check_out_time DESC;
+"
+```
+
+**Resultado esperado:** `(0 rows)` ✅
+
+---
+
+## 🔄 Restaurar Backup en Base de Datos
+
+Guía para restaurar un backup `.sql` en formato plano en una base de datos limpia o reemplazar una existente.
+
+---
+
+## 📦 Escenario 1: Restaurar en BD Limpia (Recomendado)
+
+Úsalo cuando quieras migrar todos los datos a un nuevo entorno (RPi5, nuevo PC, etc.)
+
+### **Paso 1: Para Docker y borra el volumen**
+```bash
+docker-compose down
+docker volume rm parking-management-system_postgres_data
+```
+
+### **Paso 2: Levanta SOLO la base de datos**
+```bash
+docker-compose up -d db
+```
+
+Espera 10 segundos para que PostgreSQL arranque completamente:
+```bash
+# Linux/Mac
+sleep 10
+
+# Windows PowerShell
+timeout /t 10
+```
+
+### **Paso 3: Copia el backup al contenedor**
+```bash
+docker cp /ruta/al/backup_plain.sql parking-management-system-db-1:/tmp/
+```
+
+**Ejemplo:**
+```bash
+docker cp D:/Downloads_Predator/backup_plain.sql parking-management-system-db-1:/tmp/
+```
+
+### **Paso 4: Restaura el backup**
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -f /tmp/backup_plain.sql
+```
+
+### **Paso 5: Verifica que los datos están OK**
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "SELECT COUNT(*) FROM vehicles;"
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "SELECT COUNT(*) FROM stays WHERE status = 'COMPLETED';"
+```
+
+### **Paso 6: Levanta backend y frontend**
+```bash
+docker-compose up -d
+```
+
+### **Paso 7: Accede al frontend**
+Abre: `http://localhost:3000` y verifica que los datos aparecen correctamente.
+
+---
+
+## 🔄 Escenario 2: Reemplazar BD Existente
+
+Úsalo cuando quieras actualizar los datos en un entorno que ya está corriendo.
+
+### **Paso 1: Para el backend (opcional, recomendado)**
+```bash
+docker-compose stop backend
+```
+
+### **Paso 2: Limpia la base de datos**
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"
+```
+
+### **Paso 3: Copia el backup al contenedor**
+```bash
+docker cp /ruta/al/backup_plain.sql parking-management-system-db-1:/tmp/
+```
+
+### **Paso 4: Restaura el backup**
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -f /tmp/backup_plain.sql
+```
+
+### **Paso 5: Verifica los datos**
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "SELECT COUNT(*) FROM vehicles;"
+```
+
+### **Paso 6: Reinicia el backend**
+```bash
+docker-compose start backend
+```
+
+---
+
+## 🔧 Generar Backup Plano (desde oficina)
+
+Para crear un backup compatible con cualquier versión de PostgreSQL:
+
+```bash
+docker-compose exec backend bash -c "PGPASSWORD=extremoduro5800 pg_dump -U autocaravanascordoba -h db -d parking_db -F p > /app/backups/database/backup_plain.sql"
+```
+
+Luego copia el backup fuera del contenedor:
+
+```bash
+docker cp parking-management-system-backend-1:/app/backups/database/backup_plain.sql ./backup_plain.sql
+```
+
+---
+
+## ⚠️ Errores Comunes
+
+### Error: "already exists"
+**Causa:** El backend ya creó las tablas vacías antes de restaurar.  
+**Solución:** Usa **Escenario 1** (restaurar ANTES de levantar el backend).
+
+### Error: "unsupported version"
+**Causa:** Intentas restaurar un backup comprimido (`-F c`) entre versiones diferentes de PostgreSQL.  
+**Solución:** Usa backups en formato plano (`-F p`).
+
+### Error: "foreign key constraint"
+**Causa:** Intentas restaurar sobre una BD que ya tiene datos parciales.  
+**Solución:** Limpia completamente con `DROP SCHEMA public CASCADE` antes de restaurar.
+
+---
+
+## 📝 Notas Importantes
+
+- **Formato recomendado:** Plain SQL (`-F p`) para máxima portabilidad
+- **Timing crítico:** Restaurar ANTES de que el backend arranque (Escenario 1)
+- **Versión PostgreSQL:** Fijar versión exacta en `docker-compose.yml`: `image: postgres:15.15`
+- **Backups automáticos:** El `backup_service.py` genera backups en formato plano compatible
+
+---
+
+## 🎯 Migración Oficina → RPi5
+
+Para migrar del PC de oficina a la Raspberry Pi 5:
+
+1. **En oficina:** Genera backup plano
+2. **Copia archivo** a RPi5 (USB, email, Drive)
+3. **En RPi5:** Usa **Escenario 1** (BD limpia)
+4. Configura IPs en `.env` para red de oficina
+5. ¡Listo!
+
+## ⚠️ Notas Importantes
+
+- **Causa del problema:** Usar el scroll del ratón sobre los campos de precio incrementa/decrementa en 0.01€
+- **Prevención:** Escribir manualmente los precios sin usar el scroll
+- **Backup recomendado:** Hacer backup antes de ejecutar el UPDATE
+- **Redondeo:** Siempre redondea hacia arriba (ej: 35.98 → 36, 13.99 → 14)
+
+---
+
+## 📊 Resumen
+
+| Paso | Acción | Comando |
+|------|--------|---------|
+| 1 | Detectar | Query SELECT con filtros decimales |
+| 2 | Corregir | UPDATE con ROUND() en matrículas específicas |
+| 3 | Verificar | Query SELECT debe devolver 0 rows |
+
+---
+
+## 3️⃣ Migrar a Otro PC (Docker Nuevo)
+
+### En el PC ORIGINAL:
+
+**1. Copia el backup más reciente**
+```bash
+# Listar backups
+docker-compose exec backend ls -lh /app/backups/database/
+
+# Copiar backup fuera del contenedor
+docker cp parking-management-system-backend-1:/app/backups/database/backup_20251208_133750.sql ./
+```
+
+**2. Lleva el archivo `.sql` al nuevo PC** (USB, Drive, etc.)
+
+---
+
+### En el PC NUEVO:
+
+**1. Clona el proyecto y arranca Docker**
+```bash
+git clone <repo>
+cd parking-management-system
+docker-compose up -d
+```
+
+**2. Copia el backup al contenedor**
+```bash
+docker cp backup_20251208_133750.sql parking-management-system-backend-1:/tmp/
+```
+
+**3. Restaura el backup**
+```bash
+docker-compose exec db pg_restore \
+  -U autocaravanascordoba \
+  -d parking_db \
+  --clean \
+  --if-exists \
+  /tmp/backup_20251208_133750.sql
+```
+
+**4. Verifica que funciona**
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "SELECT COUNT(*) FROM vehicles;"
+```
+
+---
+
+## 4️⃣ Restaurar desde Google Drive
+
+**1. Descarga el backup de Google Drive**
+- Accede a la carpeta "BD-Backups"
+- Descarga el `.sql` deseado
+
+**2. Copia al contenedor**
+```bash
+docker cp backup_descargado.sql parking-management-system-backend-1:/tmp/
+```
+
+**3. Restaura**
+```bash
+docker-compose exec db pg_restore \
+  -U autocaravanascordoba \
+  -d parking_db \
+  --clean \
+  --if-exists \
+  /tmp/backup_descargado.sql
+```
+
+---
+
+## ⚠️ Notas Importantes
+
+- `--clean`: Borra tablas existentes antes de restaurar
+- `--if-exists`: No da error si las tablas no existen
+- Los backups están en formato comprimido de PostgreSQL (`.sql`)
+- El nombre del contenedor puede variar: `parking-management-system-backend-1` o `backend-1`
+
+---
+
+## 🆘 Solución de Problemas
+
+### Error: "no crontab for root"
+El backup manual funciona pero el automático no tiene variables de entorno.
+```bash
+docker-compose exec backend crontab -l
+```
+Debe mostrar el cron con las variables POSTGRES_*.
+
+### Error: "password authentication failed"
+Las credenciales no coinciden. Verifica el `.env` y `docker-compose.yml`.
+
+### Backup vacío (0 bytes)
+El `pg_dump` falló. Revisa:
+```bash
+docker-compose exec backend cat /app/backups/backup.log
+```
+
+---
+
 ## 🔐 Seguridad en Producción
 
 ### Checklist antes de Deploy
