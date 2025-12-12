@@ -6,8 +6,9 @@ from enum import Enum
 class SpotType(str, Enum):
     A = "A"
     B = "B"
+    CB = "CB"
     C = "C"
-    SPECIAL = "Special"
+    CPLUS = "CPLUS"
 
 class StayStatus(str, Enum):
     PENDING = "pending"
@@ -453,3 +454,12 @@ class CashSessionPreCloseInfo(BaseModel):
     # Transacciones pendientes
     pending_count: int
     has_pending: bool
+
+
+# Schema para impresión de tickets
+class PrintTicketRequest(BaseModel):
+    type: str
+    license_plate: str
+    check_in_time: str
+    check_out_time: Optional[str] = None
+    amount: float

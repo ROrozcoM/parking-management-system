@@ -369,10 +369,11 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
               onChange={(e) => setSpotType(e.target.value)}
               disabled={loading}
             >
-              <option value="A">Type A</option>
-              <option value="B">Type B</option>
-              <option value="C">Type C</option>
-              <option value="Special">Special</option>
+              <option value="A">🅰️ Tipo A - Standard</option>
+              <option value="B">🅱️ Tipo B - Compact</option>
+              <option value="CB">🅱️©️ Tipo CB - Flexible</option>
+              <option value="C">©️ Tipo C - Large</option>
+              <option value="CPLUS">©️+ Tipo C+ - Premium Large</option>
             </Form.Select>
           </Form.Group>
 

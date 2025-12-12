@@ -15,8 +15,9 @@ def madrid_now():
 class SpotType(str, enum.Enum):
     A = "A"
     B = "B"
+    CB = "CB"        # ← NUEVO
     C = "C"
-    SPECIAL = "Special"
+    CPLUS = "CPLUS"    # ← NUEVO
 
 class StayStatus(str, enum.Enum):
     PENDING = "pending"

@@ -287,8 +287,9 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
             >
               <option value="A">🅰️ Tipo A - Standard</option>
               <option value="B">🅱️ Tipo B - Compact</option>
+              <option value="CB">🅱️©️ Tipo CB - Flexible</option>
               <option value="C">©️ Tipo C - Large</option>
-              <option value="Special">⭐ Special - Reserved</option>
+              <option value="CPLUS">©️+ Tipo C+ - Premium Large</option>
             </Form.Select>
           </Form.Group>
 

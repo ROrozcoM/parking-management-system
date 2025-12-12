@@ -2,9 +2,13 @@
 """
 Script para crear plazas de parking
 
-MODIFICADO PARA RAILWAY: No requiere interacción (sin input())
-- Detecta si ya existen plazas
-- No las duplica si ya están creadas
+DISTRIBUCIÓN ACTUALIZADA:
+- A: 27 plazas
+- B: 16 plazas
+- CB: 3 plazas
+- C: 20 plazas
+- CPLUS: 1 plaza
+TOTAL: 67 plazas
 """
 
 import sys
@@ -28,12 +32,13 @@ def create_parking_spots():
             print(f"  ℹ️  Ya existen {existing} plazas. No se crearán duplicados.")
             return
         
-        # Definir plazas a crear (configuración actual del parking)
+        # Nueva distribución: 67 plazas
         spots_config = [
-            {"type": models.SpotType.A, "count": 27},  # 27 plazas tipo A
-            {"type": models.SpotType.B, "count": 19},  # 19 plazas tipo B
-            {"type": models.SpotType.C, "count": 20},  # 20 plazas tipo C
-            {"type": models.SpotType.SPECIAL, "count": 2},  # 2 plazas especiales
+            {"type": models.SpotType.A, "count": 27, "prefix": "A"},
+            {"type": models.SpotType.B, "count": 16, "prefix": "B"},
+            {"type": models.SpotType.CB, "count": 3, "prefix": "CB"},
+            {"type": models.SpotType.C, "count": 20, "prefix": "C"},
+            {"type": models.SpotType.CPLUS, "count": 1, "prefix": "CPLUS"},
         ]
         
         total_created = 0
@@ -41,9 +46,10 @@ def create_parking_spots():
         for config in spots_config:
             spot_type = config["type"]
             count = config["count"]
+            prefix = config["prefix"]
             
             for i in range(1, count + 1):
-                spot_number = f"{spot_type.value}{i:02d}"
+                spot_number = f"{prefix}{i:02d}"
                 
                 spot = models.ParkingSpot(
                     spot_number=spot_number,
@@ -61,9 +67,10 @@ def create_parking_spots():
         print("="*60)
         print("\nDistribución:")
         print(f"  - Tipo A: 27 plazas (A01-A27)")
-        print(f"  - Tipo B: 19 plazas (B01-B19)")
+        print(f"  - Tipo B: 16 plazas (B01-B16)")
+        print(f"  - Tipo CB: 3 plazas (CB01-CB03)")
         print(f"  - Tipo C: 20 plazas (C01-C20)")
-        print(f"  - Especiales: 2 plazas (Special01-Special02)")
+        print(f"  - Tipo CPLUS: 1 plaza (CPLUS01)")
         print(f"\n  TOTAL: {total_created} plazas")
         
     except Exception as e:
@@ -71,7 +78,7 @@ def create_parking_spots():
         db.rollback()
         import traceback
         traceback.print_exc()
-        raise  # Re-raise para que init_db.sh detecte el error
+        raise
     finally:
         db.close()
 
