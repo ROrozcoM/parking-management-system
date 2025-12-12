@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { staysAPI } from '../services/api';
 import { Modal, Button, Form, Alert } from 'react-bootstrap';
 
-// Diccionario de nacionalidades con motes (igual que antes, lo omito por brevedad)
+// Diccionario de nacionalidades con motes
 const NATIONALITY_INSULTS = {
   "Spain": ["cateto nacional", "español"],
   "France": ["gabacho", "francés"],
@@ -63,7 +63,6 @@ const NATIONALITY_INSULTS = {
   "Israel": ["judío caza palestinos", "israelí"],
   "South Africa": ["bóer", "sudafricano"],
   "Other": ["extranjero de mierda", "otro"],
-  // ... resto del diccionario
 };
 
 const getNationalityInsult = (country) => {
@@ -80,10 +79,7 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
   const [vehicleType, setVehicleType] = useState('Caravan');
   const [spotType, setSpotType] = useState('A');
   const [isRental, setIsRental] = useState(false);
-  
-  // ← NUEVO: Estado para check_in_time
   const [checkInTime, setCheckInTime] = useState('');
-  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [blacklistInfo, setBlacklistInfo] = useState(null);
@@ -92,10 +88,8 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
   const [customerHistory, setCustomerHistory] = useState(null);
   const [checkingHistory, setCheckingHistory] = useState(false);
 
-  // ← NUEVO: Función para obtener fecha/hora actual en formato local
   const getCurrentDateTime = () => {
     const now = new Date();
-    // Formato: YYYY-MM-DDTHH:MM
     const year = now.getFullYear();
     const month = String(now.getMonth() + 1).padStart(2, '0');
     const day = String(now.getDate()).padStart(2, '0');
@@ -104,26 +98,24 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
     return `${year}-${month}-${day}T${hours}:${minutes}`;
   };
 
-  // ← NUEVO: Inicializar checkInTime al abrir modal
   React.useEffect(() => {
     if (show) {
       setCheckInTime(getCurrentDateTime());
     }
   }, [show]);
 
-  // Lista completa de países (omitida por brevedad)
   const countries = [
     'Spain', 'France', 'Germany', 'Italy', 'Portugal', 'United Kingdom', 
-  'Netherlands', 'Belgium', 'Switzerland', 'Austria', 'Poland', 
-  'Czech Republic', 'Sweden', 'Norway', 'Denmark', 'Finland', 'Ireland',
-  'Luxembourg', 'Greece', 'Hungary', 'Romania', 'Bulgaria', 'Croatia',
-  'Slovenia', 'Slovakia', 'Serbia', 'Lithuania', 'Latvia', 'Estonia',
-  'Malta', 'Cyprus', 'Iceland', 'Albania', 'Bosnia and Herzegovina',
-  'Montenegro', 'North Macedonia', 'Moldova', 'Ukraine', 'Belarus',
-  'Russia', 'Turkey', 'Morocco', 'Algeria', 'Tunisia', 'United States',
-  'Canada', 'Mexico', 'Brazil', 'Argentina', 'Chile', 'Australia',
-  'New Zealand', 'Japan', 'China', 'South Korea', 'India', 'Israel',
-  'South Africa', 'Other'
+    'Netherlands', 'Belgium', 'Switzerland', 'Austria', 'Poland', 
+    'Czech Republic', 'Sweden', 'Norway', 'Denmark', 'Finland', 'Ireland',
+    'Luxembourg', 'Greece', 'Hungary', 'Romania', 'Bulgaria', 'Croatia',
+    'Slovenia', 'Slovakia', 'Serbia', 'Lithuania', 'Latvia', 'Estonia',
+    'Malta', 'Cyprus', 'Iceland', 'Albania', 'Bosnia and Herzegovina',
+    'Montenegro', 'North Macedonia', 'Moldova', 'Ukraine', 'Belarus',
+    'Russia', 'Turkey', 'Morocco', 'Algeria', 'Tunisia', 'United States',
+    'Canada', 'Mexico', 'Brazil', 'Argentina', 'Chile', 'Australia',
+    'New Zealand', 'Japan', 'China', 'South Korea', 'India', 'Israel',
+    'South Africa', 'Other'
   ];
 
   const handleLicensePlateChange = async (value) => {
@@ -194,27 +186,24 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
       setLoading(true);
       setError(null);
 
-      // Convertir checkInTime a formato ISO para el backend
       const checkInTimeISO = checkInTime ? new Date(checkInTime).toISOString() : null;
       
-      // ← MODIFICADO: Pasar checkInTime
       await staysAPI.createManualEntry(
         licensePlate, 
         vehicleType, 
         spotType, 
         country, 
         isRental,
-        checkInTimeISO  // ← AÑADIR
+        checkInTimeISO
       );
       onSuccess();
       
-      // Reset form
       setLicensePlate('');
       setCountry('Spain');
       setVehicleType('Caravan');
       setSpotType('A');
       setIsRental(false);
-      setCheckInTime(getCurrentDateTime());  // ← RESET a hora actual
+      setCheckInTime(getCurrentDateTime());
       setBlacklistInfo(null);
       setCustomerHistory(null);
       setForceCheckIn(false);
@@ -249,7 +238,7 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
         <Modal.Title>Add Manual Entry</Modal.Title>
       </Modal.Header>
       <Modal.Body>
-        {/* Alertas de verificación (igual que antes) */}
+        {/* VERIFICANDO INFORMACIÓN */}
         {(checkingBlacklist || checkingHistory) && (
           <Alert variant="info">
             <span className="spinner-border spinner-border-sm me-2"></span>
@@ -257,17 +246,63 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
           </Alert>
         )}
 
-        {/* Alerta lista negra (igual que antes) */}
+        {/* ALERTA DE LISTA NEGRA */}
         {blacklistInfo?.is_blacklisted && (
           <Alert variant="danger" className="mb-4">
-            {/* ... contenido igual ... */}
+            <h5 className="alert-heading">⚠️⚠️⚠️ ALERTA - ESTE HIJOPUTA SE FUE SIN PAGAR! ⚠️⚠️⚠️</h5>
+            <hr />
+            <div className="mb-2">
+              <strong>Matrícula:</strong> <span className="text-danger fs-5">{licensePlate}</span>
+            </div>
+            <div className="mb-2">
+              <strong>Deuda total pendiente:</strong> <span className="text-danger fs-4">{blacklistInfo.total_debt.toFixed(2)} €</span>
+            </div>
+            <div className="mb-3">
+              <strong>Incidentes registrados:</strong> {blacklistInfo.entries.length}
+            </div>
+            
+            {blacklistInfo.entries.map((entry, index) => (
+              <div key={entry.id} className="mb-2 p-2 bg-light rounded">
+                <small>
+                  <strong>Incidente {index + 1}:</strong> {new Date(entry.incident_date).toLocaleDateString()} - {entry.amount_owed.toFixed(2)} €
+                  {entry.notes && <><br /><em>{entry.notes}</em></>}
+                </small>
+              </div>
+            ))}
+
+            <hr />
+            <Form.Check 
+              type="checkbox"
+              id="force-checkin-manual"
+              label="He verificado la situación y deseo permitir el check-in de todos modos"
+              checked={forceCheckIn}
+              onChange={(e) => setForceCheckIn(e.target.checked)}
+              className="fw-bold"
+            />
           </Alert>
         )}
 
-        {/* Alerta cliente habitual (igual que antes) */}
+        {/* ALERTA DE CLIENTE HABITUAL */}
         {customerHistory?.is_returning_customer && !blacklistInfo?.is_blacklisted && (
           <Alert variant="success" className="mb-3">
-            {/* ... contenido igual ... */}
+            <h6 className="alert-heading">✨ ¡Este {mote} ({gentilicio}) ya ha estado aquí! ✨</h6>
+            <hr />
+            <div className="row">
+              <div className="col-6 mb-2">
+                <strong>Visitas anteriores:</strong> {customerHistory.total_visits}
+              </div>
+              <div className="col-6 mb-2">
+                <strong>Última visita:</strong> {new Date(customerHistory.last_visit_date).toLocaleDateString()}
+              </div>
+              <div className="col-6 mb-2">
+                <strong>Total gastado:</strong> {customerHistory.total_spent.toFixed(2)} €
+              </div>
+              <div className="col-6 mb-2">
+                <strong>Media de estancia:</strong> {customerHistory.avg_nights} noches
+              </div>
+            </div>
+            <hr />
+            <small className="text-muted">💡 <strong>Sugerencia:</strong> Considera ofrecer descuento por fidelidad o agradecer su preferencia</small>
           </Alert>
         )}
 
@@ -284,7 +319,6 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
             />
           </Form.Group>
 
-          {/* ← NUEVO: Campo de fecha/hora de entrada */}
           <Form.Group className="mb-3">
             <Form.Label>📅 Fecha y hora de entrada</Form.Label>
             <Form.Control 
