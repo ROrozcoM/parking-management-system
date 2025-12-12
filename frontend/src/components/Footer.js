@@ -5,7 +5,7 @@ function Footer() {
     <footer className="footer">
       <div className="container">
         <div className="footer-content">
-          <p>&copy; {new Date().getFullYear()} Parking Management System - Desarrollado por Rafael Orozco</p>
+          <p>&copy; {new Date().getFullYear()} Parking Management System - By "El Agrónomo"</p>
           <div className="footer-links">
             <a href="#" className="footer-link">Privacy Policy</a>
             <a href="#" className="footer-link">Terms of Service</a>
