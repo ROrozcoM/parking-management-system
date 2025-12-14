@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Button, Alert } from 'react-bootstrap';
+import { Modal, Button, Alert, Form } from 'react-bootstrap';
 import { staysAPI } from '../services/api';
 import CheckOutModal from './CheckOutModal';
 import PaymentModal from './PaymentModal';
@@ -18,14 +18,20 @@ function ActiveCard({ refreshData }) {
   const [showManualEntryModal, setShowManualEntryModal] = useState(false);
   const [showExtendStayModal, setShowExtendStayModal] = useState(false);
 
-  // ← NUEVO: Estados para salidas previstas hoy
+  // Estados para salidas previstas hoy
   const [checkoutsDueToday, setCheckoutsDueToday] = useState([]);
   const [showCheckoutsDueModal, setShowCheckoutsDueModal] = useState(false);
   const [loadingCheckoutsDue, setLoadingCheckoutsDue] = useState(false);
 
+  // ← NUEVOS: Estados para eliminar estancia activa
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [stayToDelete, setStayToDelete] = useState(null);
+  const [confirmLicensePlate, setConfirmLicensePlate] = useState('');
+  const [deleteError, setDeleteError] = useState('');
+
   useEffect(() => {
     fetchActiveStays();
-    fetchCheckoutsDueToday(); // ← NUEVO
+    fetchCheckoutsDueToday();
   }, []);
 
   useEffect(() => {
@@ -54,7 +60,6 @@ function ActiveCard({ refreshData }) {
     }
   };
 
-  // ← NUEVO: Fetch salidas previstas hoy
   const fetchCheckoutsDueToday = async () => {
     try {
       const response = await fetch('/api/stays/checkouts-due-today', {
@@ -66,7 +71,7 @@ function ActiveCard({ refreshData }) {
       if (!response.ok) throw new Error('Error fetching checkouts due today');
       
       const data = await response.json();
-      console.log('🔍 Checkouts due today:', data.stays); // ← DEBUG
+      console.log('🔍 Checkouts due today:', data.stays);
       setCheckoutsDueToday(data.stays || []);
     } catch (err) {
       console.error('Error fetching checkouts due today:', err);
@@ -92,23 +97,67 @@ function ActiveCard({ refreshData }) {
     setShowManualEntryModal(true);
   };
 
-  // ← NUEVO: Abrir modal de salidas previstas
   const handleShowCheckoutsDue = () => {
     setShowCheckoutsDueModal(true);
   };
 
-  // ← NUEVO: Checkout desde el modal de salidas previstas
   const handleCheckoutFromDueList = (stay) => {
     setShowCheckoutsDueModal(false);
     setSelectedStay(stay);
     setShowCheckOutModal(true);
   };
 
+  // ← NUEVO: Manejar click en eliminar
+  const handleDeleteClick = (stay) => {
+    setStayToDelete(stay);
+    setConfirmLicensePlate('');
+    setDeleteError('');
+    setShowDeleteModal(true);
+  };
+
+  // ← NUEVO: Confirmar eliminación
+  const handleConfirmDelete = async () => {
+    if (!stayToDelete) return;
+
+    // Validar que la matrícula coincida
+    if (confirmLicensePlate.trim().toUpperCase() !== stayToDelete.vehicle.license_plate.toUpperCase()) {
+      setDeleteError('La matrícula no coincide. Por favor, verifica e inténtalo de nuevo.');
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/stays/${stayToDelete.id}/active`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error eliminando estancia');
+      }
+
+      // Éxito
+      setShowDeleteModal(false);
+      setStayToDelete(null);
+      setConfirmLicensePlate('');
+      fetchActiveStays();
+      if (refreshData) refreshData();
+
+      alert(`✅ Estancia eliminada correctamente para ${stayToDelete.vehicle.license_plate}`);
+    } catch (err) {
+      setDeleteError(err.message);
+      console.error('Error eliminando estancia:', err);
+    }
+  };
+
   const handleCheckOutSuccess = () => {
     setShowCheckOutModal(false);
     setSelectedStay(null);
     fetchActiveStays();
-    fetchCheckoutsDueToday(); // ← NUEVO: Actualizar lista
+    fetchCheckoutsDueToday();
     if (refreshData) refreshData();
   };
 
@@ -116,7 +165,7 @@ function ActiveCard({ refreshData }) {
     setShowPaymentModal(false);
     setSelectedStay(null);
     fetchActiveStays();
-    fetchCheckoutsDueToday(); // ← NUEVO: Actualizar si se hace prepago
+    fetchCheckoutsDueToday();
     if (refreshData) refreshData();
   };
 
@@ -124,7 +173,7 @@ function ActiveCard({ refreshData }) {
     setShowExtendStayModal(false);
     setSelectedStay(null);
     fetchActiveStays();
-    fetchCheckoutsDueToday(); // ← NUEVO: Actualizar si se extiende
+    fetchCheckoutsDueToday();
     if (refreshData) refreshData();
   };
 
@@ -237,7 +286,6 @@ function ActiveCard({ refreshData }) {
         </button>
       </div>
       
-      {/* ← NUEVO: Badge de salidas previstas hoy */}
       {checkoutsDueToday.length > 0 && (
         <div style={{
           backgroundColor: '#fff3cd',
@@ -358,12 +406,23 @@ function ActiveCard({ refreshData }) {
                   <div className="stay-actions">
                     <div className="d-grid gap-2">
                       {stay.payment_status === 'pending' && (
-                        <button 
-                          className="btn btn-warning btn-sm"
-                          onClick={() => handlePrepaymentClick(stay)}
-                        >
-                          💳 Pagar por Adelantado
-                        </button>
+                        <>
+                          <button 
+                            className="btn btn-warning btn-sm"
+                            onClick={() => handlePrepaymentClick(stay)}
+                          >
+                            💳 Pagar por Adelantado
+                          </button>
+                          
+                          {/* ← NUEVO: Botón eliminar (solo si pending) */}
+                          <button 
+                            className="btn btn-outline-secondary btn-sm"
+                            onClick={() => handleDeleteClick(stay)}
+                            style={{ fontSize: '0.85rem' }}
+                          >
+                            🗑️ Eliminar
+                          </button>
+                        </>
                       )}
                       
                       {stay.payment_status === 'prepaid' && (
@@ -421,7 +480,7 @@ function ActiveCard({ refreshData }) {
         onSuccess={handleManualEntrySuccess}
       />
 
-      {/* ← NUEVO: Modal de salidas previstas hoy */}
+      {/* Modal de salidas previstas hoy */}
       <Modal 
         show={showCheckoutsDueModal} 
         onHide={() => setShowCheckoutsDueModal(false)} 
@@ -501,6 +560,100 @@ function ActiveCard({ refreshData }) {
         <Modal.Footer>
           <Button variant="secondary" onClick={() => setShowCheckoutsDueModal(false)}>
             Cerrar
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ← NUEVO: Modal de confirmación para eliminar */}
+      <Modal 
+        show={showDeleteModal} 
+        onHide={() => {
+          setShowDeleteModal(false);
+          setStayToDelete(null);
+          setConfirmLicensePlate('');
+          setDeleteError('');
+        }}
+        centered
+      >
+        <Modal.Header closeButton style={{ backgroundColor: '#fff3cd', borderBottom: '2px solid #ffc107' }}>
+          <Modal.Title>⚠️ ELIMINAR ESTANCIA ACTIVA</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {stayToDelete && (
+            <>
+              <Alert variant="danger">
+                <strong>⚠️ Esta acción NO se puede deshacer</strong>
+                <br />
+                <small>La estancia será marcada como descartada y la plaza se liberará.</small>
+              </Alert>
+
+              <div style={{ 
+                backgroundColor: '#f8f9fa', 
+                padding: '1rem', 
+                borderRadius: '8px',
+                marginBottom: '1rem'
+              }}>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Matrícula:</strong> {stayToDelete.vehicle.license_plate}
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>País:</strong> {stayToDelete.vehicle.country}
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Plaza:</strong> {stayToDelete.parking_spot ? `${stayToDelete.parking_spot.spot_type} - ${stayToDelete.parking_spot.spot_number}` : 'N/A'}
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Entrada:</strong> {formatDateTime(stayToDelete.check_in_time)}
+                </div>
+                <div>
+                  <strong>Estado:</strong> {getPaymentStatusBadge(stayToDelete.payment_status)}
+                </div>
+              </div>
+
+              <Form.Group>
+                <Form.Label>
+                  <strong>Para confirmar, escribe la matrícula:</strong>
+                </Form.Label>
+                <Form.Control
+                  type="text"
+                  placeholder={stayToDelete.vehicle.license_plate}
+                  value={confirmLicensePlate}
+                  onChange={(e) => {
+                    setConfirmLicensePlate(e.target.value);
+                    setDeleteError('');
+                  }}
+                  style={{ 
+                    textTransform: 'uppercase',
+                    borderColor: deleteError ? '#dc3545' : undefined
+                  }}
+                />
+                {deleteError && (
+                  <div style={{ color: '#dc3545', fontSize: '0.9rem', marginTop: '0.5rem' }}>
+                    {deleteError}
+                  </div>
+                )}
+              </Form.Group>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button 
+            variant="secondary" 
+            onClick={() => {
+              setShowDeleteModal(false);
+              setStayToDelete(null);
+              setConfirmLicensePlate('');
+              setDeleteError('');
+            }}
+          >
+            Cancelar
+          </Button>
+          <Button 
+            variant="danger" 
+            onClick={handleConfirmDelete}
+            disabled={!confirmLicensePlate.trim()}
+          >
+            🗑️ Eliminar Estancia
           </Button>
         </Modal.Footer>
       </Modal>

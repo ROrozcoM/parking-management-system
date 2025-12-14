@@ -523,3 +523,76 @@ async def get_recent_checkouts_endpoint(
     """
     checkouts = crud.get_recent_checkouts(db, limit)
     return checkouts
+
+
+@router.delete("/{stay_id}/active")
+async def delete_active_stay(
+    stay_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """
+    Elimina una estancia activa (solo si está en estado PENDING de pago).
+    - Marca el stay como DISCARDED
+    - Libera la plaza de parking
+    - Registra la acción en history_logs
+    """
+    stay = db.query(models.Stay).filter(models.Stay.id == stay_id).first()
+    
+    if not stay:
+        raise HTTPException(status_code=404, detail="Stay not found")
+    
+    # Verificar que esté activo
+    if stay.status != models.StayStatus.ACTIVE:
+        raise HTTPException(
+            status_code=400,
+            detail="Solo se pueden eliminar estancias activas"
+        )
+    
+    # Verificar que NO tenga pago adelantado
+    if stay.payment_status == models.PaymentStatus.PREPAID:
+        raise HTTPException(
+            status_code=400,
+            detail="No se pueden eliminar estancias con pago adelantado"
+        )
+    
+    # Guardar info para el log
+    license_plate = stay.vehicle.license_plate if stay.vehicle else "Unknown"
+    spot_number = stay.parking_spot.spot_number if stay.parking_spot else "N/A"
+    check_in_time = stay.check_in_time
+    
+    # 1. MARCAR STAY COMO DISCARDED
+    stay.status = models.StayStatus.DISCARDED
+    
+    # 2. LIBERAR PLAZA DE PARKING
+    if stay.parking_spot:
+        spot = db.query(models.ParkingSpot).filter(
+            models.ParkingSpot.id == stay.parking_spot_id
+        ).first()
+        if spot:
+            spot.is_occupied = False
+    
+    # 3. CREAR LOG EN HISTORY
+    history_log = models.HistoryLog(
+        stay_id=stay_id,
+        action="Estancia activa eliminada manualmente",
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+        details={
+            "license_plate": license_plate,
+            "spot_number": spot_number,
+            "check_in_time": check_in_time.isoformat() if check_in_time else None,
+            "deleted_by": current_user.username,
+            "reason": "Eliminación manual desde Active Stays (error operario)"
+        },
+        user_id=current_user.id
+    )
+    db.add(history_log)
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"Estancia eliminada correctamente para {license_plate}",
+        "stay_id": stay_id,
+        "deleted_by": current_user.username
+    }
