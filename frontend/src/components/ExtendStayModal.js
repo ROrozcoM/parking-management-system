@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, Form, Alert, Spinner } from 'react-bootstrap';
+import { staysAPI } from '../services/api';
 
 function ExtendStayModal({ show, onHide, stay, onSuccess }) {
   const [nightsToAdd, setNightsToAdd] = useState(1);
   const [additionalAmount, setAdditionalAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState('cash');
   const [loading, setLoading] = useState(false);
+  const [printing, setPrinting] = useState(false);
   const [error, setError] = useState(null);
   const [newCheckoutDate, setNewCheckoutDate] = useState('');
   const [currentNights, setCurrentNights] = useState(0);
@@ -46,6 +48,38 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
     const pricePerNight = 10;
     const calculatedAmount = nightsToAdd * pricePerNight;
     setAdditionalAmount(calculatedAmount.toFixed(2));
+  };
+
+  const handlePrintTicket = async () => {
+    setPrinting(true);
+    setError(null);
+
+    try {
+      // Calcular nueva fecha de checkout
+      const currentCheckout = new Date(stay.check_out_time);
+      const newCheckout = new Date(currentCheckout);
+      newCheckout.setDate(newCheckout.getDate() + parseInt(nightsToAdd));
+
+      const ticketData = {
+        type: 'extension',
+        license_plate: stay.vehicle.license_plate,
+        check_in_time: stay.check_in_time,
+        check_out_time: newCheckout.toISOString(),
+        amount: parseFloat(additionalAmount)
+      };
+
+      const result = await staysAPI.printTicket(ticketData);
+      
+      if (result.success) {
+        console.log('Ticket de extensión impreso correctamente');
+      }
+
+    } catch (err) {
+      console.error('Error printing extension ticket:', err);
+      setError('Error al imprimir el ticket de extensión');
+    } finally {
+      setPrinting(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -177,7 +211,7 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
               min="1"
               value={nightsToAdd}
               onChange={(e) => setNightsToAdd(e.target.value)}
-              disabled={loading}
+              disabled={loading || printing}
               required
             />
             <Form.Text className="text-muted">
@@ -204,7 +238,7 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
               min="0"
               value={additionalAmount}
               onChange={(e) => setAdditionalAmount(e.target.value)}
-              disabled={loading}
+              disabled={loading || printing}
               required
             />
             <Form.Text className="text-muted">
@@ -217,7 +251,7 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
             <Form.Select
               value={paymentMethod}
               onChange={(e) => setPaymentMethod(e.target.value)}
-              disabled={loading}
+              disabled={loading || printing}
             >
               <option value="cash">💵 Efectivo</option>
               <option value="card">💳 Tarjeta</option>
@@ -244,11 +278,35 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
             </small>
           </Alert>
 
-          <div className="d-grid">
+          <div className="d-grid gap-2">
+            {/* Botón de imprimir ticket */}
+            <Button 
+              variant="info" 
+              onClick={handlePrintTicket}
+              disabled={!additionalAmount || parseFloat(additionalAmount) <= 0 || printing || loading}
+            >
+              {printing ? (
+                <>
+                  <Spinner
+                    as="span"
+                    animation="border"
+                    size="sm"
+                    role="status"
+                    aria-hidden="true"
+                    className="me-2"
+                  />
+                  Imprimiendo...
+                </>
+              ) : (
+                <>🖨️ Generar Ticket de Extensión</>
+              )}
+            </Button>
+
+            {/* Botón de confirmar extensión */}
             <Button 
               variant="success" 
               type="submit"
-              disabled={loading}
+              disabled={loading || printing}
               size="lg"
             >
               {loading ? (
@@ -271,7 +329,7 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
         </Form>
       </Modal.Body>
       <Modal.Footer>
-        <Button variant="secondary" onClick={handleClose} disabled={loading}>
+        <Button variant="secondary" onClick={handleClose} disabled={loading || printing}>
           Cancelar
         </Button>
       </Modal.Footer>
