@@ -504,3 +504,14 @@ async def analytics_occupancy_period(
     """Ocupación por período con filtros opcionales"""
     from app.crud import get_occupancy_by_period
     return get_occupancy_by_period(db, start_date, end_date, country)
+
+@app.get("/api/analytics/user-performance")
+async def analytics_user_performance(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user)
+):
+    """Rendimiento por usuario con filtros opcionales de fecha"""
+    from app.crud import get_user_performance
+    return get_user_performance(db, start_date, end_date)

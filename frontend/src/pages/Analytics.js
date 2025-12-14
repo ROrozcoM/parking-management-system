@@ -30,7 +30,7 @@ function Analytics() {
   const [weekdayDistribution, setWeekdayDistribution] = useState([]);
   const [rentalVsOwned, setRentalVsOwned] = useState(null);
 
-  // ← NUEVOS: Estados para ocupación
+  // ← Estados para ocupación
   const [dailyOccupancy, setDailyOccupancy] = useState(null);
   const [occupancyPeriod, setOccupancyPeriod] = useState(null);
   const [occupancyStartDate, setOccupancyStartDate] = useState('');
@@ -38,9 +38,17 @@ function Analytics() {
   const [occupancyCountry, setOccupancyCountry] = useState('all');
   const [loadingOccupancy, setLoadingOccupancy] = useState(false);
 
+  // ← NUEVOS: Estados para rendimiento de usuarios
+  const [userPerformance, setUserPerformance] = useState(null);
+  const [performanceStartDate, setPerformanceStartDate] = useState('');
+  const [performanceEndDate, setPerformanceEndDate] = useState('');
+  const [loadingPerformance, setLoadingPerformance] = useState(false);
+  const [performanceTimeRange, setPerformanceTimeRange] = useState('all'); // all, 7, 30, 90
+
   useEffect(() => {
     loadAllData();
-    loadDailyOccupancy(); // ← NUEVO: Cargar ocupación diaria
+    loadDailyOccupancy();
+    loadUserPerformance(); // ← NUEVO: Cargar rendimiento por defecto (TODO)
   }, [timeRange]);
 
   const fetchWithAuth = async (url) => {
@@ -76,8 +84,8 @@ function Analytics() {
         totalNightsData,
         countryData,
         peakHoursData,
-        paymentMethodsData,  // ← Original (para Pie Chart)
-        paymentMethodsDetailedData,  // ← NUEVO (para Cards + Tabla)
+        paymentMethodsData,
+        paymentMethodsDetailedData,
         stayDurationData,
         stayLengthData,
         weekdayData,
@@ -89,8 +97,8 @@ function Analytics() {
         fetchWithAuth('/api/analytics/total-nights'),
         fetchWithAuth('/api/analytics/country-distribution'),
         fetchWithAuth('/api/analytics/peak-hours'),
-        fetchWithAuth('/api/analytics/payment-methods'),  // ← Original
-        fetchWithAuth('/api/analytics/payment-methods-detailed'),  // ← NUEVO
+        fetchWithAuth('/api/analytics/payment-methods'),
+        fetchWithAuth('/api/analytics/payment-methods-detailed'),
         fetchWithAuth('/api/analytics/stay-duration-by-country'),
         fetchWithAuth('/api/analytics/stay-length-distribution'),
         fetchWithAuth('/api/analytics/weekday-distribution'),
@@ -104,8 +112,8 @@ function Analytics() {
       setCountryDistribution(countryData.by_country);
       setRentalTotals(countryData.rental_totals);
       setPeakHours(peakHoursData);
-      setPaymentMethods(paymentMethodsData);  // ← Original (Pie Chart)
-      setPaymentMethodsDetailed(paymentMethodsDetailedData);  // ← NUEVO (Cards + Tabla)
+      setPaymentMethods(paymentMethodsData);
+      setPaymentMethodsDetailed(paymentMethodsDetailedData);
       setStayDuration(stayDurationData);
       setStayLengthDistribution(stayLengthData);
       setWeekdayDistribution(weekdayData);
@@ -121,7 +129,7 @@ function Analytics() {
     }
   };
 
-  // ← NUEVO: Cargar ocupación diaria media
+  // ← Cargar ocupación diaria media
   const loadDailyOccupancy = async () => {
     try {
       const data = await fetchWithAuth('/api/analytics/daily-occupancy-average');
@@ -131,7 +139,7 @@ function Analytics() {
     }
   };
 
-  // ← NUEVO: Calcular ocupación por período
+  // ← Calcular ocupación por período
   const calculateOccupancyPeriod = async () => {
     if (!occupancyStartDate || !occupancyEndDate) {
       alert('Por favor selecciona ambas fechas');
@@ -149,6 +157,60 @@ function Analytics() {
     } finally {
       setLoadingOccupancy(false);
     }
+  };
+
+  // ← NUEVO: Cargar rendimiento de usuarios
+  const loadUserPerformance = async (startDate = null, endDate = null) => {
+    try {
+      setLoadingPerformance(true);
+      let url = '/api/analytics/user-performance';
+      
+      if (startDate && endDate) {
+        url += `?start_date=${startDate}&end_date=${endDate}`;
+      }
+      
+      const data = await fetchWithAuth(url);
+      setUserPerformance(data);
+    } catch (err) {
+      console.error('Error cargando rendimiento de usuarios:', err);
+    } finally {
+      setLoadingPerformance(false);
+    }
+  };
+
+  // ← NUEVO: Manejar botones rápidos de tiempo
+  const handlePerformanceQuickRange = (days) => {
+    setPerformanceTimeRange(days);
+    
+    if (days === 'all') {
+      // TODO el histórico
+      setPerformanceStartDate('');
+      setPerformanceEndDate('');
+      loadUserPerformance();
+    } else {
+      // Calcular fechas
+      const end = new Date();
+      const start = new Date();
+      start.setDate(start.getDate() - days);
+      
+      const startStr = start.toISOString().split('T')[0];
+      const endStr = end.toISOString().split('T')[0];
+      
+      setPerformanceStartDate(startStr);
+      setPerformanceEndDate(endStr);
+      loadUserPerformance(startStr, endStr);
+    }
+  };
+
+  // ← NUEVO: Calcular con rango personalizado
+  const calculateCustomPerformance = () => {
+    if (!performanceStartDate || !performanceEndDate) {
+      alert('Por favor selecciona ambas fechas');
+      return;
+    }
+    
+    setPerformanceTimeRange('custom');
+    loadUserPerformance(performanceStartDate, performanceEndDate);
   };
 
   if (loading) {
@@ -244,7 +306,7 @@ function Analytics() {
         </Col>
       </Row>
 
-      {/* NUEVO: KPIs de Métodos de Pago - Compactos */}
+      {/* KPIs de Métodos de Pago - Compactos */}
       {paymentMethodsDetailed && (
         <Row className="mb-3">
           <Col md={4}>
@@ -277,9 +339,7 @@ function Analytics() {
         </Row>
       )}
 
-      {/* ============================================================ */}
-      {/* NUEVA SECCIÓN: OCUPACIÓN DETALLADA */}
-      {/* ============================================================ */}
+      {/* SECCIÓN: OCUPACIÓN DETALLADA */}
       
       {/* Ocupación Diaria Media (Gauge) */}
       {dailyOccupancy && (
@@ -294,7 +354,6 @@ function Analytics() {
                   <Col md={4} className="text-center">
                     <div style={{ position: 'relative', width: '200px', height: '200px', margin: '0 auto' }}>
                       <svg viewBox="0 0 200 200" style={{ transform: 'rotate(-90deg)' }}>
-                        {/* Círculo de fondo */}
                         <circle
                           cx="100"
                           cy="100"
@@ -303,7 +362,6 @@ function Analytics() {
                           stroke="#e0e0e0"
                           strokeWidth="20"
                         />
-                        {/* Círculo de progreso */}
                         <circle
                           cx="100"
                           cy="100"
@@ -365,11 +423,10 @@ function Analytics() {
       <Row className="mb-4">
         <Col md={12}>
           <Card>
-            <Card.Header className="bg-info text-white">
-              <h5 className="mb-0">📅 Análisis de Ocupación por Período</h5>
+            <Card.Header className="bg-info text-black">
+              <h5 className="mb-0">Análisis de Ocupación por Período</h5>
             </Card.Header>
             <Card.Body>
-              {/* Filtros */}
               <Row className="mb-3">
                 <Col md={3}>
                   <Form.Group>
@@ -425,7 +482,6 @@ function Analytics() {
                 </Col>
               </Row>
 
-              {/* Resultados */}
               {occupancyPeriod && (
                 <>
                   <Alert variant="success">
@@ -443,7 +499,6 @@ function Analytics() {
                     </Row>
                   </Alert>
 
-                  {/* Gráfico de línea temporal */}
                   <Card className="mb-3">
                     <Card.Header>
                       <strong>Evolución Diaria de Ocupación</strong>
@@ -474,7 +529,6 @@ function Analytics() {
                     </Card.Body>
                   </Card>
 
-                  {/* Desglose por tipo */}
                   <Row>
                     <Col md={6}>
                       <Card>
@@ -506,7 +560,6 @@ function Analytics() {
                       </Card>
                     </Col>
 
-                    {/* Desglose por país (si no se filtró) */}
                     {occupancyPeriod.by_country && (
                       <Col md={6}>
                         <Card>
@@ -545,10 +598,6 @@ function Analytics() {
           </Card>
         </Col>
       </Row>
-
-      {/* ============================================================ */}
-      {/* FIN SECCIÓN OCUPACIÓN */}
-      {/* ============================================================ */}
 
       {/* Gráficos de Línea: Ingresos y Pernoctas */}
       <Row className="mb-4">
@@ -663,7 +712,6 @@ function Analytics() {
           </Card>
         </Col>
 
-        {/* Pie Chart Original: Payment Status */}
         <Col md={6}>
           <Card>
             <Card.Header>
@@ -694,7 +742,7 @@ function Analytics() {
         </Col>
       </Row>
 
-      {/* NUEVA: Tabla de Transacciones Electrónicas con Pestañas */}
+      {/* Tabla de Transacciones Electrónicas con Pestañas */}
       {paymentMethodsDetailed && (
         <Row className="mb-4">
           <Col md={12}>
@@ -724,7 +772,6 @@ function Analytics() {
                   </Nav.Item>
                 </Nav>
 
-                {/* Contenido de Transferencias */}
                 {activePaymentTab === 'transfer' && (
                   <>
                     {paymentMethodsDetailed.transactions.transfer.length > 0 ? (
@@ -763,7 +810,6 @@ function Analytics() {
                   </>
                 )}
 
-                {/* Contenido de Tarjeta */}
                 {activePaymentTab === 'card' && (
                   <>
                     {paymentMethodsDetailed.transactions.card.length > 0 ? (
@@ -896,6 +942,191 @@ function Analytics() {
                 </Row>
                 <div className="text-center mt-3 text-muted">
                   <small>Total de estancias completadas: <strong>{rentalVsOwned.total}</strong></small>
+                </div>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      )}
+
+      {/* ============================================================ */}
+      {/* NUEVA SECCIÓN: RENDIMIENTO POR USUARIO */}
+      {/* ============================================================ */}
+      
+      {userPerformance && (
+        <Row className="mb-4">
+          <Col md={12}>
+            <Card>
+              <Card.Header className="bg-warning text-dark">
+                <h5 className="mb-0">Rendimiento por Usuario</h5>
+              </Card.Header>
+              <Card.Body>
+                {/* Filtros de tiempo */}
+                <Row className="mb-3">
+                  <Col md={12} className="mb-2">
+                    <ButtonGroup>
+                      <Button
+                        variant={performanceTimeRange === 'all' ? 'warning' : 'outline-warning'}
+                        onClick={() => handlePerformanceQuickRange('all')}
+                      >
+                        TODO EL HISTÓRICO
+                      </Button>
+                      <Button
+                        variant={performanceTimeRange === 7 ? 'warning' : 'outline-warning'}
+                        onClick={() => handlePerformanceQuickRange(7)}
+                      >
+                        7 días
+                      </Button>
+                      <Button
+                        variant={performanceTimeRange === 30 ? 'warning' : 'outline-warning'}
+                        onClick={() => handlePerformanceQuickRange(30)}
+                      >
+                        30 días
+                      </Button>
+                      <Button
+                        variant={performanceTimeRange === 90 ? 'warning' : 'outline-warning'}
+                        onClick={() => handlePerformanceQuickRange(90)}
+                      >
+                        90 días
+                      </Button>
+                    </ButtonGroup>
+                  </Col>
+                </Row>
+
+                {/* Rango personalizado */}
+                <Row className="mb-3">
+                  <Col md={4}>
+                    <Form.Group>
+                      <Form.Label><strong>Fecha Inicio:</strong></Form.Label>
+                      <Form.Control
+                        type="date"
+                        value={performanceStartDate}
+                        onChange={(e) => setPerformanceStartDate(e.target.value)}
+                      />
+                    </Form.Group>
+                  </Col>
+                  <Col md={4}>
+                    <Form.Group>
+                      <Form.Label><strong>Fecha Fin:</strong></Form.Label>
+                      <Form.Control
+                        type="date"
+                        value={performanceEndDate}
+                        onChange={(e) => setPerformanceEndDate(e.target.value)}
+                      />
+                    </Form.Group>
+                  </Col>
+                  <Col md={4} className="d-flex align-items-end">
+                    <Button
+                      variant="warning"
+                      onClick={calculateCustomPerformance}
+                      disabled={loadingPerformance || !performanceStartDate || !performanceEndDate}
+                      style={{ width: '100%' }}
+                    >
+                      {loadingPerformance ? (
+                        <>
+                          <Spinner size="sm" animation="border" /> Calculando...
+                        </>
+                      ) : (
+                        'Calcular'
+                      )}
+                    </Button>
+                  </Col>
+                </Row>
+
+                {/* Info del período */}
+                <Alert variant="info">
+                  <Row>
+                    <Col md={6}>
+                      <strong>Período: </strong>
+                      {userPerformance.period.is_full_history ? (
+                        'TODO EL HISTÓRICO'
+                      ) : (
+                        `${new Date(userPerformance.period.start).toLocaleDateString('es-ES')} - ${new Date(userPerformance.period.end).toLocaleDateString('es-ES')}`
+                      )}
+                    </Col>
+                    <Col md={6} className="text-end">
+                      <strong>Total Acciones: </strong>{userPerformance.totals.total_actions} | 
+                      <strong> Acciones Pago: </strong>{userPerformance.totals.payment_actions} | 
+                      <strong> Ingresos: </strong>{userPerformance.totals.revenue.toFixed(2)} €
+                    </Col>
+                  </Row>
+                </Alert>
+
+                {/* Top Performers */}
+                {userPerformance.top_performers.general && (
+                  <Alert variant="success">
+                    <Row>
+                      <Col md={6}>
+                        🏆 <strong>TOP PERFORMER (General):</strong> {userPerformance.top_performers.general}
+                      </Col>
+                      <Col md={6}>
+                        💰 <strong>TOP PERFORMER (Pagos):</strong> {userPerformance.top_performers.payments}
+                      </Col>
+                    </Row>
+                  </Alert>
+                )}
+
+                {/* Tabla de rendimiento */}
+                <div style={{ overflowX: 'auto' }}>
+                  <Table striped bordered hover responsive size="sm">
+                    <thead style={{ backgroundColor: '#f8f9fa' }}>
+                      <tr>
+                        <th rowSpan="2" style={{ verticalAlign: 'middle' }}>Usuario</th>
+                        <th colSpan="4" className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Gestión Estancias</th>
+                        <th colSpan="2" className="text-center" style={{ backgroundColor: '#d4edda' }}>Gestión Pagos</th>
+                        <th colSpan="2" className="text-center" style={{ backgroundColor: '#cfe2ff' }}>Gestión Caja</th>
+                        <th rowSpan="2" className="text-center" style={{ backgroundColor: '#f8d7da', verticalAlign: 'middle' }}>SINPA</th>
+                        <th colSpan="3" className="text-center" style={{ backgroundColor: '#fff3cd' }}>Totales</th>
+                      </tr>
+                      <tr>
+                        {/* Estancias */}
+                        <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Check-ins</th>
+                        <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Manuales</th>
+                        <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Check-outs</th>
+                        <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Descartados</th>
+                        {/* Pagos */}
+                        <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Prepagos</th>
+                        <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Extensión</th>
+                        {/* Caja */}
+                        <th className="text-center" style={{ backgroundColor: '#cfe2ff' }}>Abre</th>
+                        <th className="text-center" style={{ backgroundColor: '#cfe2ff' }}>Cierre</th>
+                        {/* Totales */}
+                        <th className="text-center" style={{ backgroundColor: '#fff3cd' }}>Total Acción</th>
+                        <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Acciones Pago</th>
+                        <th className="text-center" style={{ backgroundColor: '#d1f2eb' }}>Ingresos €</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {userPerformance.users.map((user, index) => (
+                        <tr key={index}>
+                          <td><strong>{user.username}</strong></td>
+                          {/* Estancias */}
+                          <td className="text-center">{user.checkins}</td>
+                          <td className="text-center">{user.manual_entries}</td>
+                          <td className="text-center">{user.checkouts}</td>
+                          <td className="text-center">{user.discarded}</td>
+                          {/* Pagos */}
+                          <td className="text-center">{user.prepayments}</td>
+                          <td className="text-center">{user.extensions}</td>
+                          {/* Caja */}
+                          <td className="text-center">{user.cash_opened}</td>
+                          <td className="text-center">{user.cash_closed}</td>
+                          {/* SINPA */}
+                          <td className="text-center text-danger"><strong>{user.sinpas}</strong></td>
+                          {/* Totales */}
+                          <td className="text-center" style={{ backgroundColor: '#fff3cd' }}>
+                            <strong>{user.total_actions}</strong>
+                          </td>
+                          <td className="text-center" style={{ backgroundColor: '#d4edda' }}>
+                            <strong>{user.payment_actions}</strong>
+                          </td>
+                          <td className="text-center text-success" style={{ backgroundColor: '#d1f2eb' }}>
+                            <strong>{user.revenue.toFixed(2)} €</strong>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
                 </div>
               </Card.Body>
             </Card>

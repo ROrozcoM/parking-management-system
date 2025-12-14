@@ -2135,3 +2135,184 @@ def get_occupancy_by_period(db: Session, start_date: str, end_date: str, country
         "by_type": by_type,
         "by_country": by_country if by_country else None
     }
+
+# ============================================================================
+# FUNCIONES PARA RENDIMIENTO POR USUARIO
+# ============================================================================
+
+def get_user_performance(db: Session, start_date: Optional[str] = None, end_date: Optional[str] = None):
+    """
+    Obtiene el rendimiento de cada usuario en un período de tiempo.
+    Si no se especifican fechas, usa TODO el histórico.
+    
+    Args:
+        start_date: Fecha inicio (YYYY-MM-DD) opcional
+        end_date: Fecha fin (YYYY-MM-DD) opcional
+    
+    Returns:
+        dict con performance por usuario y totales generales
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    
+    # Parsear fechas si existen
+    date_filter_logs = True
+    date_filter_sessions = True
+    
+    if start_date and end_date:
+        start = datetime.fromisoformat(start_date).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+        end = datetime.fromisoformat(end_date).replace(hour=23, minute=59, second=59, tzinfo=ZoneInfo("Europe/Madrid"))
+    else:
+        # Sin filtro = TODO el histórico
+        start = None
+        end = None
+        date_filter_logs = False
+        date_filter_sessions = False
+    
+    # Obtener todos los usuarios
+    users = db.query(models.User).all()
+    
+    performance = []
+    
+    for user in users:
+        user_id = user.id
+        username = user.username
+        
+        # Query base para history_logs
+        logs_query = db.query(models.HistoryLog).filter(
+            models.HistoryLog.user_id == user_id
+        )
+        
+        if date_filter_logs:
+            logs_query = logs_query.filter(
+                models.HistoryLog.timestamp >= start,
+                models.HistoryLog.timestamp <= end
+            )
+        
+        logs = logs_query.all()
+        
+        # Contar acciones por tipo
+        checkins = 0
+        manual_entries = 0
+        checkouts = 0
+        discarded = 0
+        prepayments = 0
+        extensions = 0
+        sinpas = 0
+        
+        for log in logs:
+            action = log.action.lower()
+            
+            if 'check-in' in action and 'manual' not in action:
+                checkins += 1
+            elif 'manual entry' in action:
+                manual_entries += 1
+            elif 'check-out' in action:
+                checkouts += 1
+            elif 'discard' in action:
+                discarded += 1
+            elif 'prepayment' in action:
+                prepayments += 1
+            elif 'extend' in action:
+                extensions += 1
+            elif 'sinpa' in action or 'blacklist' in action:
+                sinpas += 1
+        
+        # Contar sesiones de caja abiertas
+        cash_opened_query = db.query(func.count(models.CashSession.id)).filter(
+            models.CashSession.opened_by_user_id == user_id
+        )
+        
+        if date_filter_sessions:
+            cash_opened_query = cash_opened_query.filter(
+                models.CashSession.opened_at >= start,
+                models.CashSession.opened_at <= end
+            )
+        
+        cash_opened = cash_opened_query.scalar() or 0
+        
+        # Contar sesiones de caja cerradas
+        cash_closed_query = db.query(func.count(models.CashSession.id)).filter(
+            models.CashSession.closed_by_user_id == user_id
+        )
+        
+        if date_filter_sessions:
+            cash_closed_query = cash_closed_query.filter(
+                models.CashSession.closed_at >= start,
+                models.CashSession.closed_at <= end
+            )
+        
+        cash_closed = cash_closed_query.scalar() or 0
+        
+        # Calcular totales
+        total_actions = (checkins + manual_entries + checkouts + discarded + 
+                        prepayments + extensions + cash_opened + cash_closed + sinpas)
+        
+        payment_actions = checkouts + prepayments + extensions
+        
+        # Calcular ingresos gestionados (stays donde este usuario hizo el checkout)
+        revenue_query = db.query(func.sum(models.Stay.amount_paid)).join(
+            models.HistoryLog, models.Stay.id == models.HistoryLog.stay_id
+        ).filter(
+            models.HistoryLog.user_id == user_id,
+            models.HistoryLog.action.like('%check-out%'),
+            models.Stay.status == models.StayStatus.COMPLETED,
+            models.Stay.amount_paid.isnot(None)
+        )
+        
+        if date_filter_logs:
+            revenue_query = revenue_query.filter(
+                models.HistoryLog.timestamp >= start,
+                models.HistoryLog.timestamp <= end
+            )
+        
+        revenue = revenue_query.scalar() or 0.0
+        
+        # Solo incluir usuarios con al menos 1 acción
+        if total_actions > 0:
+            performance.append({
+                "user_id": user_id,
+                "username": username,
+                "checkins": checkins,
+                "manual_entries": manual_entries,
+                "checkouts": checkouts,
+                "discarded": discarded,
+                "prepayments": prepayments,
+                "extensions": extensions,
+                "cash_opened": cash_opened,
+                "cash_closed": cash_closed,
+                "sinpas": sinpas,
+                "total_actions": total_actions,
+                "payment_actions": payment_actions,
+                "revenue": float(revenue)
+            })
+    
+    # Ordenar por total_actions DESC
+    performance.sort(key=lambda x: x["total_actions"], reverse=True)
+    
+    # Calcular totales generales
+    total_all_actions = sum(p["total_actions"] for p in performance)
+    total_payment_actions = sum(p["payment_actions"] for p in performance)
+    total_revenue = sum(p["revenue"] for p in performance)
+    
+    # Top performers
+    top_general = performance[0]["username"] if performance else None
+    top_payments = max(performance, key=lambda x: x["payment_actions"])["username"] if performance else None
+    
+    return {
+        "period": {
+            "start": start_date,
+            "end": end_date,
+            "is_full_history": not date_filter_logs
+        },
+        "totals": {
+            "total_actions": total_all_actions,
+            "payment_actions": total_payment_actions,
+            "revenue": total_revenue
+        },
+        "top_performers": {
+            "general": top_general,
+            "payments": top_payments
+        },
+        "users": performance
+    }
