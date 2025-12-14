@@ -1,26 +1,42 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Button, Alert } from 'react-bootstrap';
+import { Modal, Button, Alert, Form } from 'react-bootstrap';
 
 function DeleteCheckoutModal({ show, onHide, onDeleted }) {
   const [checkouts, setCheckouts] = useState([]);
+  const [filteredCheckouts, setFilteredCheckouts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [selectedStayId, setSelectedStayId] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
-  const [limit, setLimit] = useState(10);
+  
+  // ← NUEVO: Estado para búsqueda
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     if (show) {
       fetchRecentCheckouts();
       setSelectedStayId(null);
       setConfirmDelete(false);
+      setSearchQuery('');
     }
-  }, [show, limit]);
+  }, [show]);
+
+  // ← NUEVO: Filtrar checkouts por matrícula
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setFilteredCheckouts(checkouts);
+    } else {
+      const filtered = checkouts.filter(checkout =>
+        checkout.license_plate.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+      setFilteredCheckouts(filtered);
+    }
+  }, [searchQuery, checkouts]);
 
   const fetchRecentCheckouts = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/stays/recent-checkouts?limit=${limit}`, {
+      const response = await fetch(`/api/stays/recent-checkouts?limit=100`, {
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('token')}`
         }
@@ -30,6 +46,7 @@ function DeleteCheckoutModal({ show, onHide, onDeleted }) {
 
       const data = await response.json();
       setCheckouts(data);
+      setFilteredCheckouts(data);
       setError(null);
     } catch (err) {
       setError('Error al cargar checkouts recientes');
@@ -67,7 +84,7 @@ function DeleteCheckoutModal({ show, onHide, onDeleted }) {
       const result = await response.json();
       alert(`✅ ${result.message}`);
       
-      onDeleted(); // Callback para recargar historia
+      onDeleted();
       onHide();
     } catch (err) {
       alert(`❌ Error: ${err.message}`);
@@ -79,11 +96,11 @@ function DeleteCheckoutModal({ show, onHide, onDeleted }) {
   const handleClose = () => {
     setSelectedStayId(null);
     setConfirmDelete(false);
-    setLimit(10);
+    setSearchQuery('');
     onHide();
   };
 
-  const selectedCheckout = checkouts.find(c => c.stay_id === selectedStayId);
+  const selectedCheckout = filteredCheckouts.find(c => c.stay_id === selectedStayId);
 
   return (
     <Modal show={show} onHide={handleClose} size="lg">
@@ -99,32 +116,46 @@ function DeleteCheckoutModal({ show, onHide, onDeleted }) {
 
         {error && <Alert variant="danger">{error}</Alert>}
 
-        {/* Filtro de límite */}
+        {/* ← NUEVO: Buscador de matrícula */}
         <div className="mb-3">
-          <label className="form-label fw-bold">Mostrar últimos:</label>
-          <div className="btn-group" role="group">
-            <button
-              type="button"
-              className={`btn btn-sm ${limit === 10 ? 'btn-primary' : 'btn-outline-primary'}`}
-              onClick={() => setLimit(10)}
-            >
-              10
-            </button>
-            <button
-              type="button"
-              className={`btn btn-sm ${limit === 50 ? 'btn-primary' : 'btn-outline-primary'}`}
-              onClick={() => setLimit(50)}
-            >
-              50
-            </button>
-            <button
-              type="button"
-              className={`btn btn-sm ${limit === 100 ? 'btn-primary' : 'btn-outline-primary'}`}
-              onClick={() => setLimit(100)}
-            >
-              100
-            </button>
+          <Form.Label className="fw-bold">🔍 Buscar por matrícula:</Form.Label>
+          <div style={{ position: 'relative' }}>
+            <Form.Control
+              type="text"
+              placeholder="Escribe la matrícula..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                paddingRight: searchQuery ? '2.5rem' : '1rem',
+                textTransform: 'uppercase'
+              }}
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                style={{
+                  position: 'absolute',
+                  right: '0.5rem',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  background: 'none',
+                  border: 'none',
+                  color: '#999',
+                  cursor: 'pointer',
+                  fontSize: '1.2rem',
+                  padding: '0 0.5rem'
+                }}
+                title="Limpiar búsqueda"
+              >
+                ×
+              </button>
+            )}
           </div>
+          {searchQuery && (
+            <small className="text-muted">
+              Mostrando {filteredCheckouts.length} de {checkouts.length} checkouts
+            </small>
+          )}
         </div>
 
         {/* Lista de checkouts */}
@@ -133,9 +164,28 @@ function DeleteCheckoutModal({ show, onHide, onDeleted }) {
             <div className="spinner-border text-primary" role="status"></div>
             <p className="mt-2">Cargando checkouts...</p>
           </div>
-        ) : checkouts.length === 0 ? (
+        ) : filteredCheckouts.length === 0 && !searchQuery ? (
           <div className="text-center p-5">
             <p>No hay checkouts recientes</p>
+          </div>
+        ) : filteredCheckouts.length === 0 && searchQuery ? (
+          <div className="text-center p-5" style={{ color: '#999' }}>
+            <p style={{ fontSize: '2rem', margin: '0 0 0.5rem 0' }}>🔍</p>
+            <p>No se encontraron checkouts con la matrícula "<strong>{searchQuery}</strong>"</p>
+            <button 
+              onClick={() => setSearchQuery('')}
+              style={{
+                marginTop: '1rem',
+                padding: '0.5rem 1rem',
+                background: 'var(--primary-color)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer'
+              }}
+            >
+              Ver todos los checkouts
+            </button>
           </div>
         ) : (
           <div style={{ maxHeight: '400px', overflowY: 'auto' }}>
@@ -151,7 +201,7 @@ function DeleteCheckoutModal({ show, onHide, onDeleted }) {
                 </tr>
               </thead>
               <tbody>
-                {checkouts.map(checkout => (
+                {filteredCheckouts.map(checkout => (
                   <tr 
                     key={checkout.stay_id}
                     onClick={() => setSelectedStayId(checkout.stay_id)}
