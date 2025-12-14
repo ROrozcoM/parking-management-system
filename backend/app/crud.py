@@ -705,10 +705,11 @@ def get_analytics_overview(db: Session):
         models.Stay.status == models.StayStatus.COMPLETED
     ).count()
     
-    # Ingresos totales
-    total_revenue = db.query(func.sum(models.Stay.final_price)).filter(
+    # Ingresos totales (EXCLUIR SINPAS - solo payment_status PAID o PREPAID)
+    total_revenue = db.query(func.sum(models.Stay.amount_paid)).filter(
         models.Stay.status == models.StayStatus.COMPLETED,
-        models.Stay.final_price.isnot(None)
+        models.Stay.payment_status.in_([models.PaymentStatus.PAID, models.PaymentStatus.PREPAID]),
+        models.Stay.amount_paid.isnot(None)
     ).scalar() or 0.0
     
     # Total SINPAS
@@ -2250,20 +2251,19 @@ def get_user_performance(db: Session, start_date: Optional[str] = None, end_date
         
         payment_actions = checkouts + prepayments + extensions
         
-        # Calcular ingresos gestionados (stays donde este usuario hizo el checkout)
-        revenue_query = db.query(func.sum(models.Stay.amount_paid)).join(
-            models.HistoryLog, models.Stay.id == models.HistoryLog.stay_id
-        ).filter(
-            models.HistoryLog.user_id == user_id,
-            models.HistoryLog.action.like('%check-out%'),
-            models.Stay.status == models.StayStatus.COMPLETED,
-            models.Stay.amount_paid.isnot(None)
+        # Calcular ingresos gestionados (transacciones de caja del usuario)
+        revenue_query = db.query(func.sum(models.CashTransaction.amount_paid)).filter(
+            models.CashTransaction.user_id == user_id,
+            models.CashTransaction.transaction_type.in_([
+                models.TransactionType.CHECKOUT,
+                models.TransactionType.PREPAYMENT
+            ])
         )
         
         if date_filter_logs:
             revenue_query = revenue_query.filter(
-                models.HistoryLog.timestamp >= start,
-                models.HistoryLog.timestamp <= end
+                models.CashTransaction.timestamp >= start,
+                models.CashTransaction.timestamp <= end
             )
         
         revenue = revenue_query.scalar() or 0.0
