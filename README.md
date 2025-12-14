@@ -979,6 +979,44 @@ ORDER BY s.check_out_time DESC;
 
 ---
 
+## Eliminar SINPAs de Lista Negra (Manualmente vía SQL)
+
+### Ver todos los SINPAs activos
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "
+SELECT id, license_plate, amount_owed, incident_date, notes, resolved 
+FROM blacklist 
+WHERE resolved = false 
+ORDER BY incident_date DESC;
+"
+```
+
+### Marcar SINPA como resuelto (por ID)
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "
+UPDATE blacklist 
+SET resolved = true 
+WHERE id = [ID_DEL_SINPA];
+"
+```
+
+### Marcar SINPA como resuelto (por matrícula)
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "
+UPDATE blacklist 
+SET resolved = true 
+WHERE license_plate = '[MATRICULA]' AND resolved = false;
+"
+```
+
+### Eliminar SINPA completamente (NO REVERSIBLE)
+```bash
+docker-compose exec db psql -U autocaravanascordoba -d parking_db -c "
+DELETE FROM blacklist 
+WHERE id = [ID_DEL_SINPA];
+"
+```
+
 ## 🔄 Restaurar Backup en Base de Datos
 
 Guía para restaurar un backup `.sql` en formato plano en una base de datos limpia o reemplazar una existente.

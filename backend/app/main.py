@@ -68,20 +68,61 @@ async def register_prepayment_endpoint(
     return {"success": True, "message": "Prepayment registered", "stay": stay}
 
 
+import requests
+from app import schemas
+
 @app.post("/api/print-ticket")
 async def print_ticket_endpoint(
-    ticket_type: str,
-    license_plate: str,
-    check_in_time: str,
-    amount: float,
-    check_out_time: Optional[str] = None,
+    ticket_data: schemas.PrintTicketRequest,
     current_user: models.User = Depends(get_current_active_user)
 ):
-    """Imprime un ticket"""
-    result = print_ticket(ticket_type, license_plate, check_in_time, amount, check_out_time)
-    if not result["success"]:
-        raise HTTPException(status_code=500, detail=result["message"])
-    return result
+    """Imprime un ticket enviando petición al servidor de impresión en Windows"""
+    
+    try:
+        # URL del servidor Flask en Windows (tu IP de Windows)
+        PRINTER_SERVER_URL = "http://192.168.1.184:9200/print"
+        
+        # Formatear fechas
+        entry_dt = datetime.fromisoformat(ticket_data.check_in_time.replace('Z', '+00:00'))
+        entry_formatted = entry_dt.strftime('%d/%m/%Y')
+        
+        exit_formatted = None
+        nights = 0
+        if ticket_data.check_out_time:
+            exit_dt = datetime.fromisoformat(ticket_data.check_out_time.replace('Z', '+00:00'))
+            exit_formatted = exit_dt.strftime('%d/%m/%Y')
+            # Calcular noches
+            duration = exit_dt - entry_dt
+            nights = max(1, int(duration.total_seconds() / (24 * 3600)))
+        
+        # Preparar datos para el servidor de impresión
+        payload = {
+            "type": ticket_data.type,
+            "license": ticket_data.license_plate,
+            "entry": entry_formatted,
+            "exit": exit_formatted,
+            "nights": nights,
+            "amount": ticket_data.amount
+        }
+        
+        # Enviar a servidor de impresión
+        response = requests.post(PRINTER_SERVER_URL, json=payload, timeout=15)
+        
+        if response.status_code == 200:
+            return {"success": True, "message": "Ticket impreso correctamente"}
+        else:
+            error_data = response.json()
+            return {
+                "success": False,
+                "message": f"Error al imprimir: {error_data.get('message', 'Unknown error')}"
+            }
+            
+    except requests.exceptions.Timeout:
+        return {"success": False, "message": "Timeout al comunicar con la impresora"}
+    except requests.exceptions.ConnectionError:
+        return {"success": False, "message": "No se puede conectar al servidor de impresión. ¿Está corriendo printer_server.py?"}
+    except Exception as e:
+        return {"success": False, "message": f"Error: {str(e)}"}
 
 
 @app.post("/api/stays/{stay_id}/checkout-with-prepayment")
@@ -441,3 +482,25 @@ async def analytics_payment_methods_detailed(
             "card": card_transactions
         }
     }
+
+@app.get("/api/analytics/daily-occupancy-average")
+async def analytics_daily_occupancy_average(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user)
+):
+    """Ocupación media para el día actual (histórica)"""
+    from app.crud import get_daily_occupancy_average
+    return get_daily_occupancy_average(db)
+
+
+@app.get("/api/analytics/occupancy-period")
+async def analytics_occupancy_period(
+    start_date: str,
+    end_date: str,
+    country: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user)
+):
+    """Ocupación por período con filtros opcionales"""
+    from app.crud import get_occupancy_by_period
+    return get_occupancy_by_period(db, start_date, end_date, country)

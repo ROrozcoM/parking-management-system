@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Alert, Spinner, Card, Row, Col, ButtonGroup, Button, Table, Nav } from 'react-bootstrap';
+import { Alert, Spinner, Card, Row, Col, ButtonGroup, Button, Table, Nav, Form } from 'react-bootstrap';
 import { useNavigate } from 'react-router-dom';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -30,8 +30,17 @@ function Analytics() {
   const [weekdayDistribution, setWeekdayDistribution] = useState([]);
   const [rentalVsOwned, setRentalVsOwned] = useState(null);
 
+  // ← NUEVOS: Estados para ocupación
+  const [dailyOccupancy, setDailyOccupancy] = useState(null);
+  const [occupancyPeriod, setOccupancyPeriod] = useState(null);
+  const [occupancyStartDate, setOccupancyStartDate] = useState('');
+  const [occupancyEndDate, setOccupancyEndDate] = useState('');
+  const [occupancyCountry, setOccupancyCountry] = useState('all');
+  const [loadingOccupancy, setLoadingOccupancy] = useState(false);
+
   useEffect(() => {
     loadAllData();
+    loadDailyOccupancy(); // ← NUEVO: Cargar ocupación diaria
   }, [timeRange]);
 
   const fetchWithAuth = async (url) => {
@@ -109,6 +118,36 @@ function Analytics() {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ← NUEVO: Cargar ocupación diaria media
+  const loadDailyOccupancy = async () => {
+    try {
+      const data = await fetchWithAuth('/api/analytics/daily-occupancy-average');
+      setDailyOccupancy(data);
+    } catch (err) {
+      console.error('Error cargando ocupación diaria:', err);
+    }
+  };
+
+  // ← NUEVO: Calcular ocupación por período
+  const calculateOccupancyPeriod = async () => {
+    if (!occupancyStartDate || !occupancyEndDate) {
+      alert('Por favor selecciona ambas fechas');
+      return;
+    }
+
+    try {
+      setLoadingOccupancy(true);
+      const url = `/api/analytics/occupancy-period?start_date=${occupancyStartDate}&end_date=${occupancyEndDate}${occupancyCountry !== 'all' ? `&country=${occupancyCountry}` : ''}`;
+      const data = await fetchWithAuth(url);
+      setOccupancyPeriod(data);
+    } catch (err) {
+      console.error('Error calculando ocupación:', err);
+      alert('Error al calcular ocupación');
+    } finally {
+      setLoadingOccupancy(false);
     }
   };
 
@@ -237,6 +276,279 @@ function Analytics() {
           </Col>
         </Row>
       )}
+
+      {/* ============================================================ */}
+      {/* NUEVA SECCIÓN: OCUPACIÓN DETALLADA */}
+      {/* ============================================================ */}
+      
+      {/* Ocupación Diaria Media (Gauge) */}
+      {dailyOccupancy && (
+        <Row className="mb-4">
+          <Col md={12}>
+            <Card>
+              <Card.Header className="bg-primary text-white">
+                <h5 className="mb-0">📊 Ocupación Diaria Media (Hoy: {dailyOccupancy.date})</h5>
+              </Card.Header>
+              <Card.Body>
+                <Row className="align-items-center">
+                  <Col md={4} className="text-center">
+                    <div style={{ position: 'relative', width: '200px', height: '200px', margin: '0 auto' }}>
+                      <svg viewBox="0 0 200 200" style={{ transform: 'rotate(-90deg)' }}>
+                        {/* Círculo de fondo */}
+                        <circle
+                          cx="100"
+                          cy="100"
+                          r="80"
+                          fill="none"
+                          stroke="#e0e0e0"
+                          strokeWidth="20"
+                        />
+                        {/* Círculo de progreso */}
+                        <circle
+                          cx="100"
+                          cy="100"
+                          r="80"
+                          fill="none"
+                          stroke={dailyOccupancy.overall_percentage > 80 ? '#dc3545' : dailyOccupancy.overall_percentage > 50 ? '#ffc107' : '#28a745'}
+                          strokeWidth="20"
+                          strokeDasharray={`${(dailyOccupancy.overall_percentage / 100) * 502.65} 502.65`}
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                      <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+                        <h1 style={{ fontSize: '3rem', margin: 0, fontWeight: 'bold' }}>
+                          {dailyOccupancy.overall_percentage}%
+                        </h1>
+                        <small className="text-muted">Ocupación</small>
+                      </div>
+                    </div>
+                    <p className="text-muted mt-3 mb-0">
+                      <strong>{dailyOccupancy.total_occupied}</strong> de <strong>{dailyOccupancy.total_available}</strong> plazas ocupadas
+                    </p>
+                    <small className="text-muted">Promedio histórico para este día</small>
+                  </Col>
+                  <Col md={8}>
+                    <h6 className="text-muted mb-3">Desglose por Tipo de Plaza:</h6>
+                    <Table bordered size="sm">
+                      <thead>
+                        <tr>
+                          <th>Tipo</th>
+                          <th className="text-center">Ocupadas</th>
+                          <th className="text-center">Total</th>
+                          <th className="text-center">%</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(dailyOccupancy.by_type).map(([type, data]) => (
+                          <tr key={type}>
+                            <td><strong>{type}</strong></td>
+                            <td className="text-center">{data.occupied}</td>
+                            <td className="text-center">{data.total}</td>
+                            <td className="text-center">
+                              <strong style={{ color: data.percentage > 80 ? '#dc3545' : data.percentage > 50 ? '#ffc107' : '#28a745' }}>
+                                {data.percentage}%
+                              </strong>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </Table>
+                  </Col>
+                </Row>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      )}
+
+      {/* Análisis de Ocupación por Período */}
+      <Row className="mb-4">
+        <Col md={12}>
+          <Card>
+            <Card.Header className="bg-info text-white">
+              <h5 className="mb-0">📅 Análisis de Ocupación por Período</h5>
+            </Card.Header>
+            <Card.Body>
+              {/* Filtros */}
+              <Row className="mb-3">
+                <Col md={3}>
+                  <Form.Group>
+                    <Form.Label><strong>Fecha Inicio:</strong></Form.Label>
+                    <Form.Control
+                      type="date"
+                      value={occupancyStartDate}
+                      onChange={(e) => setOccupancyStartDate(e.target.value)}
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={3}>
+                  <Form.Group>
+                    <Form.Label><strong>Fecha Fin:</strong></Form.Label>
+                    <Form.Control
+                      type="date"
+                      value={occupancyEndDate}
+                      onChange={(e) => setOccupancyEndDate(e.target.value)}
+                    />
+                  </Form.Group>
+                </Col>
+                <Col md={3}>
+                  <Form.Group>
+                    <Form.Label><strong>País:</strong></Form.Label>
+                    <Form.Select
+                      value={occupancyCountry}
+                      onChange={(e) => setOccupancyCountry(e.target.value)}
+                    >
+                      <option value="all">Todos los países</option>
+                      {countryDistribution.slice(0, 10).map((country, index) => (
+                        <option key={index} value={country.country}>
+                          {country.country}
+                        </option>
+                      ))}
+                    </Form.Select>
+                  </Form.Group>
+                </Col>
+                <Col md={3} className="d-flex align-items-end">
+                  <Button
+                    variant="primary"
+                    onClick={calculateOccupancyPeriod}
+                    disabled={loadingOccupancy || !occupancyStartDate || !occupancyEndDate}
+                    style={{ width: '100%' }}
+                  >
+                    {loadingOccupancy ? (
+                      <>
+                        <Spinner size="sm" animation="border" /> Calculando...
+                      </>
+                    ) : (
+                      '🔍 Calcular Ocupación'
+                    )}
+                  </Button>
+                </Col>
+              </Row>
+
+              {/* Resultados */}
+              {occupancyPeriod && (
+                <>
+                  <Alert variant="success">
+                    <Row>
+                      <Col md={6}>
+                        <strong>Período:</strong> {new Date(occupancyPeriod.period.start).toLocaleDateString('es-ES')} - {new Date(occupancyPeriod.period.end).toLocaleDateString('es-ES')}
+                        <br />
+                        <strong>Días analizados:</strong> {occupancyPeriod.period.days}
+                      </Col>
+                      <Col md={6} className="text-end">
+                        <h4 className="mb-0">
+                          Ocupación Media: <strong style={{ color: '#28a745' }}>{occupancyPeriod.average_occupancy}%</strong>
+                        </h4>
+                      </Col>
+                    </Row>
+                  </Alert>
+
+                  {/* Gráfico de línea temporal */}
+                  <Card className="mb-3">
+                    <Card.Header>
+                      <strong>Evolución Diaria de Ocupación</strong>
+                    </Card.Header>
+                    <Card.Body>
+                      <ResponsiveContainer width="100%" height={300}>
+                        <LineChart data={occupancyPeriod.timeline}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            dataKey="date" 
+                            tickFormatter={(date) => new Date(date).toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' })}
+                          />
+                          <YAxis domain={[0, 100]} />
+                          <Tooltip 
+                            labelFormatter={(date) => new Date(date).toLocaleDateString('es-ES')}
+                            formatter={(value) => [`${value}%`, 'Ocupación']}
+                          />
+                          <Legend />
+                          <Line 
+                            type="monotone" 
+                            dataKey="occupancy_percentage" 
+                            stroke="#0088FE" 
+                            name="Ocupación (%)" 
+                            strokeWidth={2}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </Card.Body>
+                  </Card>
+
+                  {/* Desglose por tipo */}
+                  <Row>
+                    <Col md={6}>
+                      <Card>
+                        <Card.Header>
+                          <strong>Ocupación Media por Tipo de Plaza</strong>
+                        </Card.Header>
+                        <Card.Body>
+                          <Table bordered>
+                            <thead>
+                              <tr>
+                                <th>Tipo</th>
+                                <th className="text-center">Ocupación Media</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {Object.entries(occupancyPeriod.by_type).map(([type, percentage]) => (
+                                <tr key={type}>
+                                  <td><strong>{type}</strong></td>
+                                  <td className="text-center">
+                                    <strong style={{ color: percentage > 80 ? '#dc3545' : percentage > 50 ? '#ffc107' : '#28a745' }}>
+                                      {percentage}%
+                                    </strong>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </Table>
+                        </Card.Body>
+                      </Card>
+                    </Col>
+
+                    {/* Desglose por país (si no se filtró) */}
+                    {occupancyPeriod.by_country && (
+                      <Col md={6}>
+                        <Card>
+                          <Card.Header>
+                            <strong>Distribución por País en el Período</strong>
+                          </Card.Header>
+                          <Card.Body style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                            <Table bordered size="sm">
+                              <thead>
+                                <tr>
+                                  <th>País</th>
+                                  <th className="text-center">Estancias</th>
+                                  <th className="text-center">%</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {Object.entries(occupancyPeriod.by_country)
+                                  .sort(([, a], [, b]) => b.stays - a.stays)
+                                  .map(([country, data]) => (
+                                    <tr key={country}>
+                                      <td>{country}</td>
+                                      <td className="text-center">{data.stays}</td>
+                                      <td className="text-center"><strong>{data.percentage}%</strong></td>
+                                    </tr>
+                                  ))}
+                              </tbody>
+                            </Table>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                    )}
+                  </Row>
+                </>
+              )}
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* ============================================================ */}
+      {/* FIN SECCIÓN OCUPACIÓN */}
+      {/* ============================================================ */}
 
       {/* Gráficos de Línea: Ingresos y Pernoctas */}
       <Row className="mb-4">

@@ -1920,3 +1920,218 @@ def get_recent_checkouts(db: Session, limit: int = 10):
     
     return result
 
+# ============================================================================
+# FUNCIONES PARA OCUPACIÓN
+# ============================================================================
+
+def get_daily_occupancy_average(db: Session):
+    """
+    Calcula la ocupación media para el día actual (histórica de todos los años)
+    Ej: Si hoy es 14 de diciembre, promedia todos los 14 de diciembre registrados
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    
+    today = datetime.now(ZoneInfo("Europe/Madrid"))
+    current_day = today.day
+    current_month = today.month
+    
+    # Total de plazas por tipo
+    total_spots = {
+        "A": 27,
+        "B": 16,
+        "CB": 3,
+        "C": 20,
+        "CPLUS": 1
+    }
+    
+    # Obtener todos los stays que estuvieron activos en este día/mes de cualquier año
+    # Un stay está activo en una fecha si: check_in <= fecha < check_out
+    
+    stays_on_this_day = db.query(models.Stay).filter(
+        and_(
+            models.Stay.status == models.StayStatus.COMPLETED,
+            models.Stay.check_in_time.isnot(None),
+            models.Stay.check_out_time.isnot(None),
+            extract('day', models.Stay.check_in_time) <= current_day,
+            extract('month', models.Stay.check_in_time) <= current_month,
+            or_(
+                extract('month', models.Stay.check_out_time) > current_month,
+                and_(
+                    extract('month', models.Stay.check_out_time) == current_month,
+                    extract('day', models.Stay.check_out_time) > current_day
+                )
+            )
+        )
+    ).all()
+    
+    # Contar ocupación por tipo
+    occupied = {"A": 0, "B": 0, "CB": 0, "C": 0, "CPLUS": 0}
+    
+    for stay in stays_on_this_day:
+        if stay.parking_spot:
+            spot_type = stay.parking_spot.spot_type.value
+            if spot_type in occupied:
+                occupied[spot_type] += 1
+    
+    # Calcular porcentajes
+    total_occupied = sum(occupied.values())
+    total_available = sum(total_spots.values())
+    
+    overall_percentage = round((total_occupied / total_available * 100), 1) if total_available > 0 else 0
+    
+    by_type = {}
+    for spot_type, count in occupied.items():
+        total = total_spots[spot_type]
+        percentage = round((count / total * 100), 1) if total > 0 else 0
+        by_type[spot_type] = {
+            "occupied": count,
+            "total": total,
+            "percentage": percentage
+        }
+    
+    return {
+        "date": f"{current_day:02d}/{current_month:02d}",
+        "overall_percentage": overall_percentage,
+        "total_occupied": total_occupied,
+        "total_available": total_available,
+        "by_type": by_type
+    }
+
+
+def get_occupancy_by_period(db: Session, start_date: str, end_date: str, country: Optional[str] = None):
+    """
+    Calcula la ocupación para un período específico con opción de filtrar por país
+    
+    Args:
+        start_date: Fecha inicio (YYYY-MM-DD)
+        end_date: Fecha fin (YYYY-MM-DD)
+        country: Opcional - filtrar por país
+    
+    Returns:
+        dict con ocupación media, timeline diario, y desglose por tipo/país
+    """
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    
+    # Parsear fechas
+    start = datetime.fromisoformat(start_date).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    end = datetime.fromisoformat(end_date).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    
+    # Total de plazas por tipo
+    total_spots = {
+        "A": 27,
+        "B": 16,
+        "CB": 3,
+        "C": 20,
+        "CPLUS": 1
+    }
+    
+    # Query base
+    query = db.query(models.Stay).filter(
+        and_(
+            models.Stay.status == models.StayStatus.COMPLETED,
+            models.Stay.check_in_time.isnot(None),
+            models.Stay.check_out_time.isnot(None),
+            models.Stay.check_in_time < end,
+            models.Stay.check_out_time > start
+        )
+    )
+    
+    # Filtrar por país si se especifica
+    if country and country != "all":
+        query = query.join(models.Vehicle).filter(models.Vehicle.country == country)
+    
+    stays = query.all()
+    
+    # Calcular ocupación día por día
+    timeline = []
+    current = start.date()
+    end_date_obj = end.date()
+    
+    while current <= end_date_obj:
+        occupied = {"A": 0, "B": 0, "CB": 0, "C": 0, "CPLUS": 0}
+        
+        for stay in stays:
+            check_in_date = stay.check_in_time.date()
+            check_out_date = stay.check_out_time.date()
+            
+            # ¿El stay estaba activo en current?
+            if check_in_date <= current < check_out_date:
+                if stay.parking_spot:
+                    spot_type = stay.parking_spot.spot_type.value
+                    if spot_type in occupied:
+                        occupied[spot_type] += 1
+        
+        total_occupied = sum(occupied.values())
+        total_available = sum(total_spots.values())
+        percentage = round((total_occupied / total_available * 100), 1) if total_available > 0 else 0
+        
+        timeline.append({
+            "date": current.strftime("%Y-%m-%d"),
+            "occupancy_percentage": percentage,
+            "occupied": total_occupied,
+            "available": total_available
+        })
+        
+        current += timedelta(days=1)
+    
+    # Calcular promedio del período
+    avg_percentage = round(sum([d["occupancy_percentage"] for d in timeline]) / len(timeline), 1) if timeline else 0
+    
+    # Desglose por tipo (promedio del período)
+    by_type = {}
+    for spot_type in total_spots.keys():
+        type_occupancy = []
+        for day in timeline:
+            # Recalcular para cada tipo
+            day_occupied = 0
+            for stay in stays:
+                check_in_date = stay.check_in_time.date()
+                check_out_date = stay.check_out_time.date()
+                day_date = datetime.strptime(day["date"], "%Y-%m-%d").date()
+                
+                if check_in_date <= day_date < check_out_date:
+                    if stay.parking_spot and stay.parking_spot.spot_type.value == spot_type:
+                        day_occupied += 1
+            
+            day_percentage = round((day_occupied / total_spots[spot_type] * 100), 1) if total_spots[spot_type] > 0 else 0
+            type_occupancy.append(day_percentage)
+        
+        avg_type = round(sum(type_occupancy) / len(type_occupancy), 1) if type_occupancy else 0
+        by_type[spot_type] = avg_type
+    
+    # Desglose por país (si no se filtró)
+    by_country = {}
+    if not country or country == "all":
+        countries = db.query(models.Vehicle.country, func.count(models.Stay.id)).join(
+            models.Stay
+        ).filter(
+            and_(
+                models.Stay.status == models.StayStatus.COMPLETED,
+                models.Stay.check_in_time >= start,
+                models.Stay.check_out_time <= end,
+                models.Vehicle.country.isnot(None)
+            )
+        ).group_by(models.Vehicle.country).all()
+        
+        total_stays_in_period = sum([c[1] for c in countries])
+        
+        for country_name, count in countries:
+            percentage = round((count / total_stays_in_period * 100), 1) if total_stays_in_period > 0 else 0
+            by_country[country_name] = {
+                "stays": count,
+                "percentage": percentage
+            }
+    
+    return {
+        "period": {
+            "start": start_date,
+            "end": end_date,
+            "days": len(timeline)
+        },
+        "average_occupancy": avg_percentage,
+        "timeline": timeline,
+        "by_type": by_type,
+        "by_country": by_country if by_country else None
+    }
