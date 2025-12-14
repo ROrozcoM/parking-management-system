@@ -392,71 +392,64 @@ async def analytics_payment_methods_detailed(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_admin_user)
 ):
-    """Desglose detallado de métodos de pago con transacciones"""
+    """Desglose detallado de métodos de pago desde transacciones de caja"""
     
-    # Obtener todas las estancias completadas
-    completed_stays = db.query(models.Stay).filter(
-        models.Stay.status == models.StayStatus.COMPLETED
+    # Obtener todas las transacciones de caja (CHECKOUT y PREPAYMENT)
+    transactions = db.query(models.CashTransaction).filter(
+        models.CashTransaction.transaction_type.in_([
+            models.TransactionType.CHECKOUT,
+            models.TransactionType.PREPAYMENT
+        ])
     ).all()
     
     # Calcular totales por método
-    cash_total = sum(
-        stay.amount_paid or 0 
-        for stay in completed_stays 
-        if stay.payment_method == models.PaymentMethod.CASH
-    )
+    cash_total = 0.0
+    card_total = 0.0
+    transfer_total = 0.0
     
-    card_total = sum(
-        stay.amount_paid or 0 
-        for stay in completed_stays 
-        if stay.payment_method == models.PaymentMethod.CARD
-    )
+    cash_count = 0
+    card_count = 0
+    transfer_count = 0
     
-    transfer_total = sum(
-        stay.amount_paid or 0 
-        for stay in completed_stays 
-        if stay.payment_method == models.PaymentMethod.TRANSFER
-    )
-    
-    # Contar transacciones
-    cash_count = sum(
-        1 for stay in completed_stays 
-        if stay.payment_method == models.PaymentMethod.CASH
-    )
-    
-    card_count = sum(
-        1 for stay in completed_stays 
-        if stay.payment_method == models.PaymentMethod.CARD
-    )
-    
-    transfer_count = sum(
-        1 for stay in completed_stays 
-        if stay.payment_method == models.PaymentMethod.TRANSFER
-    )
-    
-    # Detalles de transferencias
     transfer_transactions = []
-    for stay in completed_stays:
-        if stay.payment_method == models.PaymentMethod.TRANSFER:
-            transfer_transactions.append({
-                "license_plate": stay.vehicle.license_plate,
-                "country": stay.vehicle.country or "Unknown",
-                "amount": stay.amount_paid or 0,
-                "check_out_time": stay.check_out_time.isoformat() if stay.check_out_time else None,
-                "check_in_time": stay.check_in_time.isoformat() if stay.check_in_time else None
-            })
-    
-    # Detalles de tarjeta
     card_transactions = []
-    for stay in completed_stays:
-        if stay.payment_method == models.PaymentMethod.CARD:
-            card_transactions.append({
-                "license_plate": stay.vehicle.license_plate,
-                "country": stay.vehicle.country or "Unknown",
-                "amount": stay.amount_paid or 0,
-                "check_out_time": stay.check_out_time.isoformat() if stay.check_out_time else None,
-                "check_in_time": stay.check_in_time.isoformat() if stay.check_in_time else None
-            })
+    
+    for tx in transactions:
+        amount = tx.amount_paid or 0
+        
+        if tx.payment_method == models.PaymentMethod.CASH:
+            cash_total += amount
+            cash_count += 1
+            
+        elif tx.payment_method == models.PaymentMethod.CARD:
+            card_total += amount
+            card_count += 1
+            
+            # Obtener datos del stay
+            stay = db.query(models.Stay).filter(models.Stay.id == tx.stay_id).first()
+            if stay:
+                card_transactions.append({
+                    "license_plate": stay.vehicle.license_plate,
+                    "country": stay.vehicle.country or "Unknown",
+                    "amount": amount,
+                    "check_out_time": tx.timestamp.isoformat(),
+                    "check_in_time": stay.check_in_time.isoformat() if stay.check_in_time else None
+                })
+            
+        elif tx.payment_method == models.PaymentMethod.TRANSFER:
+            transfer_total += amount
+            transfer_count += 1
+            
+            # Obtener datos del stay
+            stay = db.query(models.Stay).filter(models.Stay.id == tx.stay_id).first()
+            if stay:
+                transfer_transactions.append({
+                    "license_plate": stay.vehicle.license_plate,
+                    "country": stay.vehicle.country or "Unknown",
+                    "amount": amount,
+                    "check_out_time": tx.timestamp.isoformat(),
+                    "check_in_time": stay.check_in_time.isoformat() if stay.check_in_time else None
+                })
     
     # Ordenar por fecha
     transfer_transactions.sort(key=lambda x: x["check_out_time"] or "", reverse=True)
