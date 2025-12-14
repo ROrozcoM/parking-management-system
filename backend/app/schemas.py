@@ -304,6 +304,7 @@ class PendingTransactionsList(BaseModel):
 class CheckoutRequest(BaseModel):
     """Request para checkout con fechas editables"""
     final_price: float = Field(..., gt=0, description="Precio final")
+    payment_method: PaymentMethod = Field(PaymentMethod.CASH, description="Método de pago")
     check_in_time: Optional[datetime] = Field(None, description="Fecha/hora entrada (editable)")
     check_out_time: Optional[datetime] = Field(None, description="Fecha/hora salida (editable)")
     
@@ -311,6 +312,7 @@ class CheckoutRequest(BaseModel):
         json_schema_extra = {
             "example": {
                 "final_price": 25.50,
+                "payment_method": "cash",
                 "check_in_time": "2025-11-24T10:00:00",
                 "check_out_time": "2025-11-26T12:00:00"
             }

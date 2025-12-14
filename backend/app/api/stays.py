@@ -66,16 +66,25 @@ async def check_out(
     current_user: models.User = Depends(get_current_active_user)
 ):
     """
-    Checkout con fechas editables.
-    - check_in_time: Fecha/hora de entrada (si no se especifica, mantiene la actual)
-    - check_out_time: Fecha/hora de salida (si no se especifica, usa NOW())
-    - final_price: Precio final
+    Checkout con fechas editables y registro automático en caja.
+    Requiere que haya una sesión de caja abierta.
     """
     stay = db.query(models.Stay).filter(models.Stay.id == stay_id).first()
     if not stay:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Stay not found"
+        )
+    
+    # Verificar que hay caja abierta
+    active_session = db.query(models.CashSession).filter(
+        models.CashSession.status == models.CashSessionStatus.OPEN
+    ).first()
+    
+    if not active_session:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No hay caja abierta. Por favor, abre la caja antes de hacer checkout."
         )
     
     # Actualizar fechas (editables)
@@ -87,20 +96,34 @@ async def check_out(
     else:
         stay.check_out_time = datetime.now(ZoneInfo("Europe/Madrid"))
     
-    # Actualizar precio
+    # Actualizar precio y método de pago
     stay.final_price = checkout_data.final_price
     stay.amount_paid = checkout_data.final_price
+    stay.payment_method = checkout_data.payment_method
     stay.status = models.StayStatus.COMPLETED
     
-    # ← CORREGIDO: Preservar PREPAID si ya estaba pagado por adelantado
+    # Preservar PREPAID si ya estaba pagado por adelantado
     if stay.payment_status != models.PaymentStatus.PREPAID:
         stay.payment_status = models.PaymentStatus.PAID
-    
-    stay.cash_registered = False  # Pendiente de registrar en caja
     
     # Liberar plaza
     if stay.parking_spot:
         stay.parking_spot.is_occupied = False
+    
+    # Registrar en caja automáticamente
+    transaction = models.CashTransaction(
+        cash_session_id=active_session.id,
+        transaction_type=models.TransactionType.CHECKOUT,
+        stay_id=stay_id,
+        amount_due=checkout_data.final_price,
+        amount_paid=checkout_data.final_price,
+        change_given=0,
+        payment_method=checkout_data.payment_method,
+        user_id=current_user.id,
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid"))
+    )
+    db.add(transaction)
+    stay.cash_registered = True
     
     # Log en historial
     history_log = models.HistoryLog(
@@ -109,10 +132,11 @@ async def check_out(
         timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
         details={
             "final_price": checkout_data.final_price,
+            "payment_method": checkout_data.payment_method.value,
             "check_in_time": stay.check_in_time.isoformat() if stay.check_in_time else None,
             "check_out_time": stay.check_out_time.isoformat() if stay.check_out_time else None,
             "nights": max(1, (stay.check_out_time.date() - stay.check_in_time.date()).days) if stay.check_in_time and stay.check_out_time else None,
-            "payment_status": stay.payment_status.value  # ← AÑADIR para trackear en logs
+            "payment_status": stay.payment_status.value
         },
         user_id=current_user.id
     )
@@ -136,17 +160,23 @@ async def prepay_stay(
     current_user: models.User = Depends(get_current_active_user)
 ):
     """
-    Prepayment con check-in implícito y fechas editables.
-    - amount: Importe pagado adelantado
-    - payment_method: Método de pago (cash/card/transfer)
-    - check_in_time: Fecha/hora entrada (si no se especifica, usa NOW())
-    - check_out_time: Fecha/hora salida PREVISTA (requerida)
-    
-    El stay pasará a ACTIVE automáticamente (check-in implícito)
+    Prepayment con check-in implícito y registro automático en caja.
+    Requiere que haya una sesión de caja abierta.
     """
     stay = db.query(models.Stay).filter(models.Stay.id == stay_id).first()
     if not stay:
         raise HTTPException(status_code=404, detail="Stay not found")
+    
+    # Verificar que hay caja abierta
+    active_session = db.query(models.CashSession).filter(
+        models.CashSession.status == models.CashSessionStatus.OPEN
+    ).first()
+    
+    if not active_session:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No hay caja abierta. Por favor, abre la caja antes de registrar pagos adelantados."
+        )
     
     # Actualizar fechas
     if prepayment_data.check_in_time:
@@ -165,10 +195,22 @@ async def prepay_stay(
     stay.prepaid_amount = prepayment_data.amount
     stay.payment_status = models.PaymentStatus.PREPAID
     stay.payment_method = prepayment_data.payment_method
-    stay.prepayment_cash_registered = False  # Pendiente para caja
-    
-    # CAMBIO CRÍTICO: Pasar a ACTIVE (check-in implícito)
     stay.status = models.StayStatus.ACTIVE
+    
+    # Registrar en caja automáticamente
+    transaction = models.CashTransaction(
+        cash_session_id=active_session.id,
+        transaction_type=models.TransactionType.PREPAYMENT,
+        stay_id=stay_id,
+        amount_due=prepayment_data.amount,
+        amount_paid=prepayment_data.amount,
+        change_given=0,
+        payment_method=prepayment_data.payment_method,
+        user_id=current_user.id,
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid"))
+    )
+    db.add(transaction)
+    stay.prepayment_cash_registered = True
     
     # Crear log en history_logs
     history_log = models.HistoryLog(
@@ -342,15 +384,23 @@ async def extend_stay(
     current_user: models.User = Depends(get_current_active_user)
 ):
     """
-    Extender estancia para stays con prepayment.
-    - Añade noches adicionales
-    - Suma importe al prepaid_amount
-    - Actualiza check_out_time
-    - Registra método de pago de la extensión en history_logs
+    Extender estancia con registro automático en caja.
+    Requiere que haya una sesión de caja abierta.
     """
     stay = db.query(models.Stay).filter(models.Stay.id == stay_id).first()
     if not stay:
         raise HTTPException(status_code=404, detail="Stay not found")
+    
+    # Verificar que hay caja abierta
+    active_session = db.query(models.CashSession).filter(
+        models.CashSession.status == models.CashSessionStatus.OPEN
+    ).first()
+    
+    if not active_session:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No hay caja abierta. Por favor, abre la caja antes de extender estancias."
+        )
     
     # Verificar que tenga prepayment
     if stay.payment_status != models.PaymentStatus.PREPAID:
@@ -376,12 +426,26 @@ async def extend_stay(
     if stay.check_out_time:
         new_checkout = stay.check_out_time + timedelta(days=extend_data.nights_to_add)
     else:
-        # Si no tenía checkout previsto (raro), usar check_in + días
         new_checkout = stay.check_in_time + timedelta(days=extend_data.nights_to_add)
     
     # Actualizar stay
     stay.prepaid_amount = (stay.prepaid_amount or 0) + extend_data.additional_amount
     stay.check_out_time = new_checkout
+    
+    # Registrar extensión en caja automáticamente
+    transaction = models.CashTransaction(
+        cash_session_id=active_session.id,
+        transaction_type=models.TransactionType.PREPAYMENT,
+        stay_id=stay_id,
+        amount_due=extend_data.additional_amount,
+        amount_paid=extend_data.additional_amount,
+        change_given=0,
+        payment_method=extend_data.payment_method,
+        user_id=current_user.id,
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+        notes=f"Extensión de estancia: +{extend_data.nights_to_add} noches"
+    )
+    db.add(transaction)
     
     # Crear log detallado en history_logs
     history_log = models.HistoryLog(

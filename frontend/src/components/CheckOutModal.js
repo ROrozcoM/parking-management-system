@@ -10,6 +10,8 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
   const [printing, setPrinting] = useState(false);
   const [error, setError] = useState(null);
   const [duration, setDuration] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  
   
   // Estados para el modal de SINPA
   const [showSinpaModal, setShowSinpaModal] = useState(false);
@@ -120,6 +122,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
 
     setLoading(true);
     setError(null);
+    
 
     try {
       const response = await fetch(`/api/stays/${stay.id}/check-out`, {
@@ -130,6 +133,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
         },
         body: JSON.stringify({
           final_price: parseFloat(finalPrice),
+          payment_method: paymentMethod,
           check_in_time: new Date(checkInTime).toISOString(),
           check_out_time: new Date(checkOutTime).toISOString()
         })
@@ -184,22 +188,15 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
     }
   };
 
-  // ============================================
-  // FUNCIÓN: Abrir modal de visitante
-  // ============================================
   const handleVisitorClick = () => {
     setShowVisitorModal(true);
   };
 
-  // ============================================
-  // FUNCIÓN: Confirmar visitante desde el modal
-  // ============================================
   const handleVisitorConfirm = async () => {
     setVisitorLoading(true);
     setError(null);
 
     try {
-      // Usar el endpoint existente con reason="Visitante - No se quedó"
       const response = await fetch(
         `/api/stays/${stay.id}/discard?reason=${encodeURIComponent('Visitante - No pernoctó')}`, 
         {
@@ -215,7 +212,6 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
         throw new Error(errorData.detail || 'Error al marcar como visitante');
       }
 
-      // Cerrar modales y refrescar lista
       setShowVisitorModal(false);
       onSuccess();
       handleClose();
@@ -232,6 +228,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
     setFinalPrice('');
     setCheckInTime('');
     setCheckOutTime('');
+    setPaymentMethod('cash');
     setError(null);
     setDuration(null);
     setSinpaNotes('');
@@ -319,7 +316,8 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
             ) : (
               <Alert variant="warning" className="mt-3">
                 <h5 className="mb-3">⏳ PENDIENTE DE PAGO</h5>
-                <Form.Group className="mb-0">
+                
+                <Form.Group className="mb-3">
                   <Form.Label>Precio Total (€)</Form.Label>
                   <Form.Control
                     type="number"
@@ -335,13 +333,25 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                     Precio calculado automáticamente según noches. Puede modificarlo si es necesario.
                   </Form.Text>
                 </Form.Group>
+
+                <Form.Group className="mb-0">
+                  <Form.Label><strong>Método de Pago:</strong></Form.Label>
+                  <Form.Select
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value)}
+                    disabled={loading || printing}
+                  >
+                    <option value="cash">💵 Efectivo</option>
+                    <option value="card">💳 Tarjeta</option>
+                    <option value="transfer">🏦 Transferencia</option>
+                  </Form.Select>
+                </Form.Group>
               </Alert>
             )}
           </div>
 
           <Form onSubmit={handleSubmit}>
             <div className="d-grid gap-2">
-              {/* Botón de imprimir ticket */}
               <Button 
                 variant="info" 
                 onClick={handlePrintTicket}
@@ -364,7 +374,6 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                 )}
               </Button>
 
-              {/* Botón de checkout normal */}
               <Button 
                 variant="success" 
                 type="submit"
@@ -388,11 +397,9 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                 )}
               </Button>
 
-              {/* Separador visual */}
               <hr className="my-2" />
               <small className="text-muted text-center">Opciones especiales</small>
 
-              {/* NUEVO: Botón de visitante */}
               <Button 
                 variant="outline-secondary" 
                 onClick={handleVisitorClick}
@@ -401,7 +408,6 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                 👋 Cliente de Paso (no se quedó)
               </Button>
 
-              {/* Botón de SINPA */}
               <Button 
                 variant="danger" 
                 onClick={handleSinpaClick}
@@ -419,7 +425,6 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de confirmación de SINPA */}
       <Modal show={showSinpaModal} onHide={() => setShowSinpaModal(false)} centered>
         <Modal.Header closeButton>
           <Modal.Title className="text-danger">⚠️ Confirmar SINPA</Modal.Title>
@@ -474,7 +479,6 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
         </Modal.Footer>
       </Modal>
 
-      {/* Modal de confirmación de Visitante */}
       <Modal show={showVisitorModal} onHide={() => setShowVisitorModal(false)} centered>
         <Modal.Header closeButton>
           <Modal.Title className="text-info">👋 Confirmar Visitante</Modal.Title>
