@@ -705,11 +705,12 @@ def get_analytics_overview(db: Session):
         models.Stay.status == models.StayStatus.COMPLETED
     ).count()
     
-    # Ingresos totales (EXCLUIR SINPAS - solo payment_status PAID o PREPAID)
-    total_revenue = db.query(func.sum(models.Stay.amount_paid)).filter(
-        models.Stay.status == models.StayStatus.COMPLETED,
-        models.Stay.payment_status.in_([models.PaymentStatus.PAID, models.PaymentStatus.PREPAID]),
-        models.Stay.amount_paid.isnot(None)
+    # Ingresos totales (desde transacciones de caja)
+    total_revenue = db.query(func.sum(models.CashTransaction.amount_paid)).filter(
+        models.CashTransaction.transaction_type.in_([
+            models.TransactionType.CHECKOUT,
+            models.TransactionType.PREPAYMENT
+        ])
     ).scalar() or 0.0
     
     # Total SINPAS
