@@ -1072,8 +1072,8 @@ function Analytics() {
                     <thead style={{ backgroundColor: '#f8f9fa' }}>
                       <tr>
                         <th rowSpan="2" style={{ verticalAlign: 'middle' }}>Usuario</th>
-                        <th colSpan="4" className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Gestión Estancias</th>
-                        <th colSpan="2" className="text-center" style={{ backgroundColor: '#d4edda' }}>Gestión Pagos</th>
+                        <th colSpan="3" className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Gestión Estancias</th>
+                        <th colSpan="3" className="text-center" style={{ backgroundColor: '#d4edda' }}>Gestión Pagos</th>
                         <th colSpan="2" className="text-center" style={{ backgroundColor: '#cfe2ff' }}>Gestión Caja</th>
                         <th rowSpan="2" className="text-center" style={{ backgroundColor: '#f8d7da', verticalAlign: 'middle' }}>SINPA</th>
                         <th colSpan="3" className="text-center" style={{ backgroundColor: '#fff3cd' }}>Totales</th>
@@ -1082,9 +1082,9 @@ function Analytics() {
                         {/* Estancias */}
                         <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Check-ins</th>
                         <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Manuales</th>
-                        <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Check-outs</th>
                         <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Descartados</th>
                         {/* Pagos */}
+                        <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Check-outs</th>
                         <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Prepagos</th>
                         <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Extensión</th>
                         {/* Caja */}
@@ -1103,9 +1103,9 @@ function Analytics() {
                           {/* Estancias */}
                           <td className="text-center">{user.checkins}</td>
                           <td className="text-center">{user.manual_entries}</td>
-                          <td className="text-center">{user.checkouts}</td>
                           <td className="text-center">{user.discarded}</td>
                           {/* Pagos */}
+                          <td className="text-center">{user.checkouts}</td>
                           <td className="text-center">{user.prepayments}</td>
                           <td className="text-center">{user.extensions}</td>
                           {/* Caja */}
