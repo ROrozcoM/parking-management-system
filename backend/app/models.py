@@ -106,6 +106,7 @@ class Stay(Base):
     parking_spot = relationship("ParkingSpot", back_populates="stays")
     user = relationship("User", back_populates="stays")
     history_logs = relationship("HistoryLog", back_populates="stay")
+    pending_transfers = relationship("PendingTransfer", back_populates="stay")
 
 class HistoryLog(Base):
     __tablename__ = "history_logs"
@@ -229,3 +230,34 @@ class CashTransaction(Base):
     session = relationship("CashSession", back_populates="transactions")
     stay = relationship("Stay", foreign_keys=[stay_id])  # ← ESPECIFICAR foreign_keys
     user = relationship("User")
+
+class PendingTransfer(Base):
+    """
+    Transferencias bancarias pendientes de confirmación.
+    Cuando un pago se hace por transferencia, se registra aquí
+    y NO en CashTransaction hasta que se confirme la recepción del dinero.
+    """
+    __tablename__ = "pending_transfers"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    stay_id = Column(Integer, ForeignKey("stays.id"), nullable=False)
+    transaction_type = Column(Enum(TransactionType), nullable=False)  # CHECKOUT, PREPAYMENT
+    amount = Column(Float, nullable=False)
+    payment_method = Column(Enum(PaymentMethod), default=PaymentMethod.TRANSFER)  # Siempre TRANSFER
+    
+    # Creación
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(ZoneInfo("Europe/Madrid")))
+    created_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    
+    # Confirmación
+    confirmed = Column(Boolean, default=False)
+    confirmed_at = Column(DateTime(timezone=True), nullable=True)
+    confirmed_by_user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # Notas opcionales
+    notes = Column(String, nullable=True)
+    
+    # Relaciones
+    stay = relationship("Stay", back_populates="pending_transfers")
+    created_by = relationship("User", foreign_keys=[created_by_user_id])
+    confirmed_by = relationship("User", foreign_keys=[confirmed_by_user_id])

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { dashboardAPI } from '../services/api';
 import PendingCard from '../components/PendingCard';
 import ActiveCard from '../components/ActiveCard';
+import PendingTransfersCard from '../components/PendingTransfersCard';
 
 function Dashboard() {
   const [dashboardData, setDashboardData] = useState(null);
@@ -119,6 +120,9 @@ function Dashboard() {
           </div>
           <div className="col-12 col-lg-6">
             <ActiveCard refreshData={fetchDashboardData} />
+            </div>
+          <div className="col-12">
+            <PendingTransfersCard refreshData={fetchDashboardData} />
           </div>
         </div>
       </div>

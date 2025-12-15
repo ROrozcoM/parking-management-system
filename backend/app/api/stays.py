@@ -112,19 +112,35 @@ async def check_out(
     
     # Registrar en caja SOLO si NO estaba prepagado
     if stay.payment_status != models.PaymentStatus.PREPAID:
-        transaction = models.CashTransaction(
-            cash_session_id=active_session.id,
-            transaction_type=models.TransactionType.CHECKOUT,
-            stay_id=stay_id,
-            amount_due=checkout_data.final_price,
-            amount_paid=checkout_data.final_price,
-            change_given=0,
-            payment_method=checkout_data.payment_method,
-            user_id=current_user.id,
-            timestamp=datetime.now(ZoneInfo("Europe/Madrid"))
-        )
-        db.add(transaction)
-        stay.cash_registered = True
+        
+        # Si es TRANSFERENCIA → crear pendiente, NO registrar en caja
+        if checkout_data.payment_method == models.PaymentMethod.TRANSFER:
+            pending = models.PendingTransfer(
+                stay_id=stay_id,
+                transaction_type=models.TransactionType.CHECKOUT,
+                amount=checkout_data.final_price,
+                payment_method=models.PaymentMethod.TRANSFER,
+                created_by_user_id=current_user.id,
+                notes=f"Checkout - {stay.vehicle.license_plate}"
+            )
+            db.add(pending)
+            stay.cash_registered = False  # No se ha registrado aún
+            
+        else:
+            # Efectivo o Tarjeta → registrar en caja inmediatamente
+            transaction = models.CashTransaction(
+                cash_session_id=active_session.id,
+                transaction_type=models.TransactionType.CHECKOUT,
+                stay_id=stay_id,
+                amount_due=checkout_data.final_price,
+                amount_paid=checkout_data.final_price,
+                change_given=0,
+                payment_method=checkout_data.payment_method,
+                user_id=current_user.id,
+                timestamp=datetime.now(ZoneInfo("Europe/Madrid"))
+            )
+            db.add(transaction)
+            stay.cash_registered = True
     else:
         # Ya estaba prepagado, no registrar de nuevo
         stay.cash_registered = True
@@ -201,20 +217,34 @@ async def prepay_stay(
     stay.payment_method = prepayment_data.payment_method
     stay.status = models.StayStatus.ACTIVE
     
-    # Registrar en caja automáticamente
-    transaction = models.CashTransaction(
-        cash_session_id=active_session.id,
-        transaction_type=models.TransactionType.PREPAYMENT,
-        stay_id=stay_id,
-        amount_due=prepayment_data.amount,
-        amount_paid=prepayment_data.amount,
-        change_given=0,
-        payment_method=prepayment_data.payment_method,
-        user_id=current_user.id,
-        timestamp=datetime.now(ZoneInfo("Europe/Madrid"))
-    )
-    db.add(transaction)
-    stay.prepayment_cash_registered = True
+    # Si es TRANSFERENCIA → crear pendiente, NO registrar en caja
+    if prepayment_data.payment_method == models.PaymentMethod.TRANSFER:
+        pending = models.PendingTransfer(
+            stay_id=stay_id,
+            transaction_type=models.TransactionType.PREPAYMENT,
+            amount=prepayment_data.amount,
+            payment_method=models.PaymentMethod.TRANSFER,
+            created_by_user_id=current_user.id,
+            notes=f"Prepago - {stay.vehicle.license_plate}"
+        )
+        db.add(pending)
+        stay.prepayment_cash_registered = False  # No se ha registrado aún
+        
+    else:
+        # Efectivo o Tarjeta → registrar en caja inmediatamente
+        transaction = models.CashTransaction(
+            cash_session_id=active_session.id,
+            transaction_type=models.TransactionType.PREPAYMENT,
+            stay_id=stay_id,
+            amount_due=prepayment_data.amount,
+            amount_paid=prepayment_data.amount,
+            change_given=0,
+            payment_method=prepayment_data.payment_method,
+            user_id=current_user.id,
+            timestamp=datetime.now(ZoneInfo("Europe/Madrid"))
+        )
+        db.add(transaction)
+        stay.prepayment_cash_registered = True
     
     # Crear log en history_logs
     history_log = models.HistoryLog(
@@ -436,20 +466,33 @@ async def extend_stay(
     stay.prepaid_amount = (stay.prepaid_amount or 0) + extend_data.additional_amount
     stay.check_out_time = new_checkout
     
-    # Registrar extensión en caja automáticamente
-    transaction = models.CashTransaction(
-        cash_session_id=active_session.id,
-        transaction_type=models.TransactionType.PREPAYMENT,
-        stay_id=stay_id,
-        amount_due=extend_data.additional_amount,
-        amount_paid=extend_data.additional_amount,
-        change_given=0,
-        payment_method=extend_data.payment_method,
-        user_id=current_user.id,
-        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
-        notes=f"Extensión de estancia: +{extend_data.nights_to_add} noches"
-    )
-    db.add(transaction)
+    # Si es TRANSFERENCIA → crear pendiente, NO registrar en caja
+    if extend_data.payment_method == models.PaymentMethod.TRANSFER:
+        pending = models.PendingTransfer(
+            stay_id=stay_id,
+            transaction_type=models.TransactionType.PREPAYMENT,  # Extensiones van como PREPAYMENT
+            amount=extend_data.additional_amount,
+            payment_method=models.PaymentMethod.TRANSFER,
+            created_by_user_id=current_user.id,
+            notes=f"Extensión +{extend_data.nights_to_add} noches - {stay.vehicle.license_plate}"
+        )
+        db.add(pending)
+        
+    else:
+        # Efectivo o Tarjeta → registrar en caja inmediatamente
+        transaction = models.CashTransaction(
+            cash_session_id=active_session.id,
+            transaction_type=models.TransactionType.PREPAYMENT,
+            stay_id=stay_id,
+            amount_due=extend_data.additional_amount,
+            amount_paid=extend_data.additional_amount,
+            change_given=0,
+            payment_method=extend_data.payment_method,
+            user_id=current_user.id,
+            timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+            notes=f"Extensión de estancia: +{extend_data.nights_to_add} noches"
+        )
+        db.add(transaction)
     
     # Crear log detallado en history_logs
     history_log = models.HistoryLog(
@@ -663,4 +706,131 @@ async def delete_active_stay(
         "message": f"Estancia eliminada correctamente para {license_plate}",
         "stay_id": stay_id,
         "deleted_by": current_user.username
+    }
+
+
+# ============================================================================
+# ENDPOINTS PARA TRANSFERENCIAS PENDIENTES
+# ============================================================================
+
+@router.get("/pending-transfers")
+async def get_pending_transfers(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """
+    Obtiene todas las transferencias pendientes de confirmación.
+    Incluye información del stay y vehículo asociado.
+    """
+    pending = db.query(models.PendingTransfer).filter(
+        models.PendingTransfer.confirmed == False
+    ).order_by(models.PendingTransfer.created_at.desc()).all()
+    
+    result = []
+    for p in pending:
+        stay = p.stay
+        result.append({
+            "id": p.id,
+            "stay_id": p.stay_id,
+            "transaction_type": p.transaction_type.value,
+            "amount": p.amount,
+            "created_at": p.created_at.isoformat(),
+            "created_by": p.created_by.username,
+            "notes": p.notes,
+            # Info del stay
+            "license_plate": stay.vehicle.license_plate,
+            "country": stay.vehicle.country,
+            "vehicle_type": stay.vehicle.vehicle_type,
+            "stay_status": stay.status.value,
+            "parking_spot": stay.parking_spot.spot_number if stay.parking_spot else None,
+            "check_in_time": stay.check_in_time.isoformat() if stay.check_in_time else None,
+            "check_out_time": stay.check_out_time.isoformat() if stay.check_out_time else None
+        })
+    
+    return {
+        "count": len(result),
+        "pending_transfers": result
+    }
+
+
+@router.post("/pending-transfers/{transfer_id}/confirm")
+async def confirm_pending_transfer(
+    transfer_id: int,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """
+    Confirma que se recibió una transferencia bancaria.
+    Crea la transacción en caja y marca como confirmada.
+    """
+    # Obtener transferencia pendiente
+    pending = db.query(models.PendingTransfer).filter(
+        models.PendingTransfer.id == transfer_id,
+        models.PendingTransfer.confirmed == False
+    ).first()
+    
+    if not pending:
+        raise HTTPException(status_code=404, detail="Transferencia pendiente no encontrada")
+    
+    # Verificar que hay caja abierta
+    active_session = db.query(models.CashSession).filter(
+        models.CashSession.status == models.CashSessionStatus.OPEN
+    ).first()
+    
+    if not active_session:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No hay caja abierta. Por favor, abre la caja antes de confirmar transferencias."
+        )
+    
+    # Crear transacción en caja
+    transaction = models.CashTransaction(
+        cash_session_id=active_session.id,
+        transaction_type=pending.transaction_type,
+        stay_id=pending.stay_id,
+        amount_due=pending.amount,
+        amount_paid=pending.amount,
+        change_given=0,
+        payment_method=models.PaymentMethod.TRANSFER,
+        user_id=current_user.id,
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+        notes=f"Transferencia confirmada - {pending.notes}"
+    )
+    db.add(transaction)
+    
+    # Marcar como confirmada
+    pending.confirmed = True
+    pending.confirmed_at = datetime.now(ZoneInfo("Europe/Madrid"))
+    pending.confirmed_by_user_id = current_user.id
+    
+    # Actualizar stay
+    stay = pending.stay
+    if pending.transaction_type == models.TransactionType.CHECKOUT:
+        stay.cash_registered = True
+    elif pending.transaction_type == models.TransactionType.PREPAYMENT:
+        stay.prepayment_cash_registered = True
+    
+    # Log en historial
+    history_log = models.HistoryLog(
+        stay_id=pending.stay_id,
+        action="Transferencia bancaria confirmada",
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+        details={
+            "amount": pending.amount,
+            "transaction_type": pending.transaction_type.value,
+            "confirmed_by": current_user.username
+        },
+        user_id=current_user.id
+    )
+    db.add(history_log)
+    
+    db.commit()
+    db.refresh(pending)
+    
+    return {
+        "success": True,
+        "message": "Transferencia confirmada y registrada en caja",
+        "transfer_id": transfer_id,
+        "amount": pending.amount,
+        "confirmed_at": pending.confirmed_at.isoformat()
     }

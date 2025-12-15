@@ -146,7 +146,6 @@ function ActiveCard({ refreshData }) {
       fetchActiveStays();
       if (refreshData) refreshData();
 
-      alert(`✅ Estancia eliminada correctamente para ${stayToDelete.vehicle.license_plate}`);
     } catch (err) {
       setDeleteError(err.message);
       console.error('Error eliminando estancia:', err);

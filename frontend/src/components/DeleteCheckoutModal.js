@@ -82,7 +82,6 @@ function DeleteCheckoutModal({ show, onHide, onDeleted }) {
       }
 
       const result = await response.json();
-      alert(`✅ ${result.message}`);
       
       onDeleted();
       onHide();
