@@ -465,3 +465,4 @@ class PrintTicketRequest(BaseModel):
     check_in_time: str
     check_out_time: Optional[str] = None
     amount: float
+    spot_type: Optional[str] = None

@@ -60,12 +60,17 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
       const newCheckout = new Date(currentCheckout);
       newCheckout.setDate(newCheckout.getDate() + parseInt(nightsToAdd));
 
+      // Obtener tipo de plaza
+      const spotType = stay.parking_spot?.spot_type || '';
+
       const ticketData = {
         type: 'extension',
         license_plate: stay.vehicle.license_plate,
         check_in_time: stay.check_in_time,
         check_out_time: newCheckout.toISOString(),
-        amount: parseFloat(additionalAmount)
+        nights: parseInt(nightsToAdd),  // ← Solo noches AÑADIDAS
+        amount: parseFloat(additionalAmount),  // ← Solo importe de extensión
+        spot_type: spotType
       };
 
       const result = await staysAPI.printTicket(ticketData);

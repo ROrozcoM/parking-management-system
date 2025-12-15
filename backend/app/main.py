@@ -102,7 +102,8 @@ async def print_ticket_endpoint(
             "entry": entry_formatted,
             "exit": exit_formatted,
             "nights": nights,
-            "amount": ticket_data.amount
+            "amount": ticket_data.amount,
+            "spot_type": ticket_data.spot_type
         }
         
         # Enviar a servidor de impresión

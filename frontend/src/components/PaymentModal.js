@@ -69,12 +69,23 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
     setError(null);
 
     try {
+      // Calcular noches
+      const checkIn = new Date(checkInTime);
+      const checkOut = new Date(checkOutTime);
+      const diffMs = checkOut - checkIn;
+      const calculatedNights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+      // Obtener tipo de plaza
+      const spotType = stay.parking_spot?.spot_type || '';
+
       const ticketData = {
         type: 'prepayment',
         license_plate: stay.vehicle.license_plate,
         check_in_time: checkInTime,
         check_out_time: checkOutTime,
-        amount: parseFloat(amount)
+        nights: calculatedNights,  // ← AÑADIR
+        amount: parseFloat(amount),
+        spot_type: spotType  // ← AÑADIR
       };
 
       const result = await staysAPI.printTicket(ticketData);

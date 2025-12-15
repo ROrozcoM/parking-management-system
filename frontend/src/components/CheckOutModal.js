@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Button, Form, Alert, Spinner } from 'react-bootstrap';
 import { staysAPI } from '../services/api';
+import TicketTypeModal from './TicketTypeModal';
 
 function CheckOutModal({ show, onHide, stay, onSuccess }) {
   const [finalPrice, setFinalPrice] = useState('');
@@ -12,6 +13,8 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
   const [duration, setDuration] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('cash');
   
+  // Estados para el modal de selección de tipo de ticket
+  const [showTicketTypeModal, setShowTicketTypeModal] = useState(false);
   
   // Estados para el modal de SINPA
   const [showSinpaModal, setShowSinpaModal] = useState(false);
@@ -80,17 +83,36 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
     }
   };
 
-  const handlePrintTicket = async () => {
+  const handleTicketButtonClick = () => {
+    setShowTicketTypeModal(true);
+  };
+
+  const handleTicketTypeSelected = (type) => {
+    handlePrintTicket(type);
+  };
+
+  const handlePrintTicket = async (ticketType = 'checkout') => {
     setPrinting(true);
     setError(null);
 
     try {
+      // Calcular noches
+      const checkIn = new Date(checkInTime);
+      const checkOut = new Date(checkOutTime);
+      const diffMs = checkOut - checkIn;
+      const calculatedNights = Math.max(1, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+
+      // Obtener tipo de plaza
+      const spotType = stay.parking_spot?.spot_type || '';
+
       const ticketData = {
-        type: 'checkout',
+        type: ticketType,  // 'checkout' o 'open_exit'
         license_plate: stay.vehicle.license_plate,
         check_in_time: checkInTime,
         check_out_time: checkOutTime,
-        amount: parseFloat(finalPrice)
+        nights: calculatedNights,
+        amount: ticketType === 'open_exit' ? 0 : parseFloat(finalPrice),
+        spot_type: spotType
       };
 
       const result = await staysAPI.printTicket(ticketData);
@@ -234,6 +256,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
     setSinpaNotes('');
     setShowSinpaModal(false);
     setShowVisitorModal(false);
+    setShowTicketTypeModal(false);
     onHide();
   };
 
@@ -352,10 +375,11 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
 
           <Form onSubmit={handleSubmit}>
             <div className="d-grid gap-2">
+              {/* Botón para generar ticket - Ahora abre modal de selección */}
               <Button 
                 variant="info" 
-                onClick={handlePrintTicket}
-                disabled={!finalPrice || parseFloat(finalPrice) < 0 || printing || loading}
+                onClick={handleTicketButtonClick}
+                disabled={printing || loading}
               >
                 {printing ? (
                   <>
@@ -374,6 +398,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                 )}
               </Button>
 
+              {/* Botón de checkout normal */}
               <Button 
                 variant="success" 
                 type="submit"
@@ -397,9 +422,11 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                 )}
               </Button>
 
+              {/* Separador visual */}
               <hr className="my-2" />
               <small className="text-muted text-center">Opciones especiales</small>
 
+              {/* Botón de visitante */}
               <Button 
                 variant="outline-secondary" 
                 onClick={handleVisitorClick}
@@ -408,6 +435,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                 👋 Cliente de Paso (no se quedó)
               </Button>
 
+              {/* Botón de SINPA */}
               <Button 
                 variant="danger" 
                 onClick={handleSinpaClick}
@@ -425,6 +453,14 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
         </Modal.Footer>
       </Modal>
 
+      {/* Modal de selección de tipo de ticket */}
+      <TicketTypeModal
+        show={showTicketTypeModal}
+        onHide={() => setShowTicketTypeModal(false)}
+        onSelectType={handleTicketTypeSelected}
+      />
+
+      {/* Modal de confirmación de SINPA */}
       <Modal show={showSinpaModal} onHide={() => setShowSinpaModal(false)} centered>
         <Modal.Header closeButton>
           <Modal.Title className="text-danger">⚠️ Confirmar SINPA</Modal.Title>
@@ -479,6 +515,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
         </Modal.Footer>
       </Modal>
 
+      {/* Modal de confirmación de Visitante */}
       <Modal show={showVisitorModal} onHide={() => setShowVisitorModal(false)} centered>
         <Modal.Header closeButton>
           <Modal.Title className="text-info">👋 Confirmar Visitante</Modal.Title>

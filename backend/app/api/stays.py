@@ -110,20 +110,24 @@ async def check_out(
     if stay.parking_spot:
         stay.parking_spot.is_occupied = False
     
-    # Registrar en caja automáticamente
-    transaction = models.CashTransaction(
-        cash_session_id=active_session.id,
-        transaction_type=models.TransactionType.CHECKOUT,
-        stay_id=stay_id,
-        amount_due=checkout_data.final_price,
-        amount_paid=checkout_data.final_price,
-        change_given=0,
-        payment_method=checkout_data.payment_method,
-        user_id=current_user.id,
-        timestamp=datetime.now(ZoneInfo("Europe/Madrid"))
-    )
-    db.add(transaction)
-    stay.cash_registered = True
+    # Registrar en caja SOLO si NO estaba prepagado
+    if stay.payment_status != models.PaymentStatus.PREPAID:
+        transaction = models.CashTransaction(
+            cash_session_id=active_session.id,
+            transaction_type=models.TransactionType.CHECKOUT,
+            stay_id=stay_id,
+            amount_due=checkout_data.final_price,
+            amount_paid=checkout_data.final_price,
+            change_given=0,
+            payment_method=checkout_data.payment_method,
+            user_id=current_user.id,
+            timestamp=datetime.now(ZoneInfo("Europe/Madrid"))
+        )
+        db.add(transaction)
+        stay.cash_registered = True
+    else:
+        # Ya estaba prepagado, no registrar de nuevo
+        stay.cash_registered = True
     
     # Log en historial
     history_log = models.HistoryLog(
