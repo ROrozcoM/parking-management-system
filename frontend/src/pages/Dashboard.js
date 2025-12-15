@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { dashboardAPI } from '../services/api';
 import PendingCard from '../components/PendingCard';
 import ActiveCard from '../components/ActiveCard';
@@ -8,9 +8,14 @@ function Dashboard() {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [pendingTransfersCount, setPendingTransfersCount] = useState(0);
+  
+  // Ref para scroll al card de transferencias
+  const transfersCardRef = useRef(null);
 
   useEffect(() => {
     fetchDashboardData();
+    fetchPendingTransfersCount();
   }, []);
 
   const fetchDashboardData = async () => {
@@ -24,6 +29,37 @@ function Dashboard() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPendingTransfersCount = async () => {
+    try {
+      const response = await fetch('/api/stays/pending-transfers', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        setPendingTransfersCount(data.count || 0);
+      }
+    } catch (err) {
+      console.error('Error fetching pending transfers count:', err);
+    }
+  };
+
+  const handleRefreshData = () => {
+    fetchDashboardData();
+    fetchPendingTransfersCount();
+  };
+
+  const scrollToTransfers = () => {
+    if (transfersCardRef.current) {
+      transfersCardRef.current.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start' 
+      });
     }
   };
 
@@ -57,6 +93,44 @@ function Dashboard() {
 
   return (
     <div className="dashboard">
+      {/* Badge flotante de transferencias pendientes */}
+      {pendingTransfersCount > 0 && (
+        <div
+          onClick={scrollToTransfers}
+          style={{
+            position: 'fixed',
+            top: '80px',
+            right: '20px',
+            backgroundColor: '#17a2b8',
+            color: 'white',
+            padding: '0.75rem 1.25rem',
+            borderRadius: '50px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+            cursor: 'pointer',
+            zIndex: 1000,
+            fontWeight: 'bold',
+            fontSize: '0.9rem',
+            transition: 'all 0.3s ease',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            animation: 'pulse 2s infinite'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.transform = 'scale(1.05)';
+            e.currentTarget.style.backgroundColor = '#138496';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.transform = 'scale(1)';
+            e.currentTarget.style.backgroundColor = '#17a2b8';
+          }}
+          title="Click para ver transferencias pendientes"
+        >
+          <span style={{ fontSize: '1.2rem' }}>🏦</span>
+          <span>{pendingTransfersCount} Transfer. Pend.</span>
+        </div>
+      )}
+
       {dashboardData && (
         <div className="stats-container">
           {/* Total Plazas */}
@@ -116,16 +190,28 @@ function Dashboard() {
       <div className="container-fluid">
         <div className="row g-4">
           <div className="col-12 col-lg-6">
-            <PendingCard refreshData={fetchDashboardData} />
+            <PendingCard refreshData={handleRefreshData} />
           </div>
           <div className="col-12 col-lg-6">
-            <ActiveCard refreshData={fetchDashboardData} />
-            </div>
-          <div className="col-12">
-            <PendingTransfersCard refreshData={fetchDashboardData} />
+            <ActiveCard refreshData={handleRefreshData} />
+          </div>
+          <div className="col-12" ref={transfersCardRef}>
+            <PendingTransfersCard refreshData={handleRefreshData} />
           </div>
         </div>
       </div>
+
+      {/* Animación de pulso */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% {
+            box-shadow: 0 4px 12px rgba(23, 162, 184, 0.4);
+          }
+          50% {
+            box-shadow: 0 4px 20px rgba(23, 162, 184, 0.8);
+          }
+        }
+      `}</style>
     </div>
   );
 }
