@@ -2258,7 +2258,7 @@ def get_user_performance(db: Session, start_date: Optional[str] = None, end_date
             models.CashTransaction.user_id == user_id,
             models.CashTransaction.transaction_type.in_([
                 models.TransactionType.CHECKOUT,
-                models.TransactionType.PREPAYMENT
+                models.TransactionType.PREPAYMENT,
             ])
         )
         
@@ -2269,6 +2269,45 @@ def get_user_performance(db: Session, start_date: Optional[str] = None, end_date
             )
         
         revenue = revenue_query.scalar() or 0.0
+        
+        # Calcular desglose por método de pago
+        payment_methods_query = db.query(models.CashTransaction).filter(
+            models.CashTransaction.user_id == user_id,
+            models.CashTransaction.transaction_type.in_([
+                models.TransactionType.CHECKOUT,
+                models.TransactionType.PREPAYMENT,
+                models.TransactionType.PRODUCT_SALE
+            ])
+        )
+        
+        if date_filter_logs:
+            payment_methods_query = payment_methods_query.filter(
+                models.CashTransaction.timestamp >= start,
+                models.CashTransaction.timestamp <= end
+            )
+        
+        transactions = payment_methods_query.all()
+        
+        # Contadores por método
+        cash_count = 0
+        cash_amount = 0.0
+        card_count = 0
+        card_amount = 0.0
+        transfer_count = 0
+        transfer_amount = 0.0
+        
+        for tx in transactions:
+            amount = tx.amount_paid or 0
+            
+            if tx.payment_method == models.PaymentMethod.CASH:
+                cash_count += 1
+                cash_amount += amount
+            elif tx.payment_method == models.PaymentMethod.CARD:
+                card_count += 1
+                card_amount += amount
+            elif tx.payment_method == models.PaymentMethod.TRANSFER:
+                transfer_count += 1
+                transfer_amount += amount
         
         # Solo incluir usuarios con al menos 1 acción
         if total_actions > 0:
@@ -2286,7 +2325,22 @@ def get_user_performance(db: Session, start_date: Optional[str] = None, end_date
                 "sinpas": sinpas,
                 "total_actions": total_actions,
                 "payment_actions": payment_actions,
-                "revenue": float(revenue)
+                "revenue": float(revenue),
+                # NUEVO: Desglose por método de pago
+                "payment_methods": {
+                    "cash": {
+                        "count": cash_count,
+                        "amount": float(cash_amount)
+                    },
+                    "card": {
+                        "count": card_count,
+                        "amount": float(card_amount)
+                    },
+                    "transfer": {
+                        "count": transfer_count,
+                        "amount": float(transfer_amount)
+                    }
+                }
             })
     
     # Ordenar por total_actions DESC

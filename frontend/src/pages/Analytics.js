@@ -1128,6 +1128,66 @@ function Analytics() {
                     </tbody>
                   </Table>
                 </div>
+
+                {/* ============================================================ */}
+                {/* NUEVA TABLA: DESGLOSE POR MÉTODO DE PAGO */}
+                {/* ============================================================ */}
+                
+                <hr className="my-4" />
+                
+                <h5 className="mb-3">💳 Desglose por Método de Pago</h5>
+                
+                <div style={{ overflowX: 'auto' }}>
+                  <Table striped bordered hover responsive size="sm">
+                    <thead style={{ backgroundColor: '#f8f9fa' }}>
+                      <tr>
+                        <th rowSpan="2" style={{ verticalAlign: 'middle' }}>Usuario</th>
+                        <th colSpan="2" className="text-center" style={{ backgroundColor: '#d4edda' }}>💵 Efectivo</th>
+                        <th colSpan="2" className="text-center" style={{ backgroundColor: '#cfe2ff' }}>💳 Tarjeta</th>
+                        <th colSpan="2" className="text-center" style={{ backgroundColor: '#d1ecf1' }}>🏦 Transferencia</th>
+                        <th rowSpan="2" className="text-center" style={{ backgroundColor: '#fff3cd', verticalAlign: 'middle' }}>Total €</th>
+                      </tr>
+                      <tr>
+                        {/* Efectivo */}
+                        <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Count</th>
+                        <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Importe</th>
+                        {/* Tarjeta */}
+                        <th className="text-center" style={{ backgroundColor: '#cfe2ff' }}>Count</th>
+                        <th className="text-center" style={{ backgroundColor: '#cfe2ff' }}>Importe</th>
+                        {/* Transferencia */}
+                        <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Count</th>
+                        <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Importe</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {userPerformance.users.map((user, index) => (
+                        <tr key={index}>
+                          <td><strong>{user.username}</strong></td>
+                          {/* Efectivo */}
+                          <td className="text-center">{user.payment_methods.cash.count}</td>
+                          <td className="text-center text-success">
+                            <strong>{user.payment_methods.cash.amount.toFixed(2)} €</strong>
+                          </td>
+                          {/* Tarjeta */}
+                          <td className="text-center">{user.payment_methods.card.count}</td>
+                          <td className="text-center text-primary">
+                            <strong>{user.payment_methods.card.amount.toFixed(2)} €</strong>
+                          </td>
+                          {/* Transferencia */}
+                          <td className="text-center">{user.payment_methods.transfer.count}</td>
+                          <td className="text-center text-info">
+                            <strong>{user.payment_methods.transfer.amount.toFixed(2)} €</strong>
+                          </td>
+                          {/* Total */}
+                          <td className="text-center" style={{ backgroundColor: '#fff3cd' }}>
+                            <strong>{user.revenue.toFixed(2)} €</strong>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </Table>
+                </div>
+
               </Card.Body>
             </Card>
           </Col>
