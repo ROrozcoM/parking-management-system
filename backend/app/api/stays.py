@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Query, Body
 from sqlalchemy.orm import Session
 from sqlalchemy import and_
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from app.database import get_db
@@ -833,4 +833,67 @@ async def confirm_pending_transfer(
         "transfer_id": transfer_id,
         "amount": pending.amount,
         "confirmed_at": pending.confirmed_at.isoformat()
+    }
+
+@router.post("/pending-transfers/{transfer_id}/mark-sinpa")
+async def mark_pending_transfer_as_sinpa(
+    transfer_id: int,
+    notes: Optional[str] = None,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """
+    Marca una transferencia pendiente como SINPA (nunca llegó el pago).
+    - Elimina la transferencia pendiente
+    - Marca el stay como SINPA
+    - Añade vehículo a lista negra
+    """
+    # Obtener transferencia pendiente
+    pending = db.query(models.PendingTransfer).filter(
+        models.PendingTransfer.id == transfer_id,
+        models.PendingTransfer.confirmed == False
+    ).first()
+    
+    if not pending:
+        raise HTTPException(status_code=404, detail="Transferencia pendiente no encontrada")
+    
+    stay = pending.stay
+    
+    if not stay:
+        raise HTTPException(status_code=404, detail="Stay asociado no encontrado")
+    
+    # Marcar stay como SINPA usando la función existente
+    sinpa_notes = f"Transferencia nunca recibida. {notes if notes else ''}"
+    result = crud.mark_stay_as_sinpa(db, stay.id, sinpa_notes, current_user.id)
+    
+    if not result:
+        raise HTTPException(status_code=500, detail="Error al marcar como SINPA")
+    
+    # Marcar la transferencia como "confirmada" con importe 0 (para histórico)
+    # O eliminarla directamente
+    db.delete(pending)
+    
+    # Log adicional
+    history_log = models.HistoryLog(
+        stay_id=stay.id,
+        action="Transferencia pendiente → SINPA",
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+        details={
+            "original_amount": pending.amount,
+            "transaction_type": pending.transaction_type.value,
+            "marked_by": current_user.username,
+            "reason": "Transferencia nunca recibida"
+        },
+        user_id=current_user.id
+    )
+    db.add(history_log)
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": "Transferencia marcada como SINPA. Vehículo añadido a lista negra.",
+        "license_plate": stay.vehicle.license_plate,
+        "amount_owed": pending.amount,
+        "blacklist_entry_id": result["blacklist_entry"].id
     }

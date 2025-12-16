@@ -1,15 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Button, Alert, Spinner } from 'react-bootstrap';
+import { Modal, Button, Alert, Spinner, Form } from 'react-bootstrap';
 
 function PendingTransfersCard({ refreshData }) {
   const [pendingTransfers, setPendingTransfers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [confirmingId, setConfirmingId] = useState(null);
+  const [sinpaId, setSinpaId] = useState(null);
   
-  // Modal de confirmación
+  // Modal de confirmación de transferencia recibida
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [selectedTransfer, setSelectedTransfer] = useState(null);
+
+  // Modal de SINPA
+  const [showSinpaModal, setShowSinpaModal] = useState(false);
+  const [sinpaNotes, setSinpaNotes] = useState('');
 
   useEffect(() => {
     fetchPendingTransfers();
@@ -42,6 +47,12 @@ function PendingTransfersCard({ refreshData }) {
     setShowConfirmModal(true);
   };
 
+  const handleSinpaClick = (transfer) => {
+    setSelectedTransfer(transfer);
+    setSinpaNotes('');
+    setShowSinpaModal(true);
+  };
+
   const handleConfirmTransfer = async () => {
     if (!selectedTransfer) return;
 
@@ -67,12 +78,49 @@ function PendingTransfersCard({ refreshData }) {
       fetchPendingTransfers();
       if (refreshData) refreshData();
 
-
     } catch (err) {
       setError(err.message);
       console.error('Error confirming transfer:', err);
     } finally {
       setConfirmingId(null);
+    }
+  };
+
+  const handleConfirmSinpa = async () => {
+    if (!selectedTransfer) return;
+
+    setSinpaId(selectedTransfer.id);
+    setError(null);
+
+    try {
+      const notesParam = sinpaNotes ? `?notes=${encodeURIComponent(sinpaNotes)}` : '';
+      const response = await fetch(`/api/stays/pending-transfers/${selectedTransfer.id}/mark-sinpa${notesParam}`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error al marcar como SINPA');
+      }
+
+      const result = await response.json();
+
+      // Éxito
+      setShowSinpaModal(false);
+      setSelectedTransfer(null);
+      setSinpaNotes('');
+      fetchPendingTransfers();
+      if (refreshData) refreshData();
+
+
+    } catch (err) {
+      setError(err.message);
+      console.error('Error marking as SINPA:', err);
+    } finally {
+      setSinpaId(null);
     }
   };
 
@@ -91,7 +139,8 @@ function PendingTransfersCard({ refreshData }) {
     const labels = {
       'checkout': '📤 Checkout',
       'prepayment': '📝 Prepago',
-      'extension': '➕ Extensión'
+      'extension': '➕ Extensión',
+      'product_sale': '🛒 Producto'
     };
     return labels[type] || type;
   };
@@ -128,7 +177,7 @@ function PendingTransfersCard({ refreshData }) {
 
           <Alert variant="info" className="mb-3">
             <strong>ℹ️ Importante:</strong> Estas transferencias están pendientes de confirmación bancaria. 
-            Una vez confirmado el ingreso, presiona "Confirmar Recibido" para registrarlas en caja.
+            Una vez confirmado el ingreso, presiona "Confirmar Recibido". Si nunca llega, puedes marcarla como SINPA.
           </Alert>
 
           {pendingTransfers.length === 0 ? (
@@ -177,29 +226,53 @@ function PendingTransfersCard({ refreshData }) {
                     )}
                   </div>
 
-                  <Button
-                    variant="success"
-                    size="sm"
-                    onClick={() => handleConfirmClick(transfer)}
-                    disabled={confirmingId === transfer.id}
-                    style={{ width: '100%' }}
-                  >
-                    {confirmingId === transfer.id ? (
-                      <>
-                        <Spinner
-                          as="span"
-                          animation="border"
-                          size="sm"
-                          role="status"
-                          aria-hidden="true"
-                          className="me-2"
-                        />
-                        Confirmando...
-                      </>
-                    ) : (
-                      <>✓ Confirmar Recibido</>
-                    )}
-                  </Button>
+                  <div className="d-grid gap-2">
+                    <Button
+                      variant="success"
+                      size="sm"
+                      onClick={() => handleConfirmClick(transfer)}
+                      disabled={confirmingId === transfer.id || sinpaId === transfer.id}
+                    >
+                      {confirmingId === transfer.id ? (
+                        <>
+                          <Spinner
+                            as="span"
+                            animation="border"
+                            size="sm"
+                            role="status"
+                            aria-hidden="true"
+                            className="me-2"
+                          />
+                          Confirmando...
+                        </>
+                      ) : (
+                        <>✓ Confirmar Recibido</>
+                      )}
+                    </Button>
+
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => handleSinpaClick(transfer)}
+                      disabled={confirmingId === transfer.id || sinpaId === transfer.id}
+                    >
+                      {sinpaId === transfer.id ? (
+                        <>
+                          <Spinner
+                            as="span"
+                            animation="border"
+                            size="sm"
+                            role="status"
+                            aria-hidden="true"
+                            className="me-2"
+                          />
+                          Procesando...
+                        </>
+                      ) : (
+                        <>🚨 Marcar como SINPA</>
+                      )}
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -207,7 +280,7 @@ function PendingTransfersCard({ refreshData }) {
         </div>
       </div>
 
-      {/* Modal de confirmación */}
+      {/* Modal de confirmación de transferencia recibida */}
       <Modal show={showConfirmModal} onHide={() => setShowConfirmModal(false)} centered>
         <Modal.Header closeButton style={{ backgroundColor: '#d1ecf1', borderBottom: '2px solid #17a2b8' }}>
           <Modal.Title>🏦 Confirmar Transferencia Recibida</Modal.Title>
@@ -258,6 +331,77 @@ function PendingTransfersCard({ refreshData }) {
           </Button>
           <Button variant="success" onClick={handleConfirmTransfer}>
             ✓ Sí, Confirmar Transferencia
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* Modal de confirmación SINPA */}
+      <Modal show={showSinpaModal} onHide={() => setShowSinpaModal(false)} centered>
+        <Modal.Header closeButton style={{ backgroundColor: '#f8d7da', borderBottom: '2px solid #dc3545' }}>
+          <Modal.Title className="text-danger">🚨 Marcar como SINPA</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {selectedTransfer && (
+            <>
+              <Alert variant="danger">
+                <strong>⚠️ ¿Confirmas que esta transferencia NUNCA llegó?</strong>
+                <br />
+                <small>El vehículo será añadido a la lista negra automáticamente como deudor.</small>
+              </Alert>
+
+              <div style={{ 
+                backgroundColor: '#f8f9fa', 
+                padding: '1rem', 
+                borderRadius: '8px',
+                marginBottom: '1rem'
+              }}>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Matrícula:</strong> <span className="license-plate-display">{selectedTransfer.license_plate}</span>
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Tipo:</strong> {getTransactionTypeLabel(selectedTransfer.transaction_type)}
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Importe adeudado:</strong> <span className="text-danger h5">{selectedTransfer.amount.toFixed(2)} €</span>
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Fecha registro:</strong> {formatDateTime(selectedTransfer.created_at)}
+                </div>
+                <div>
+                  <strong>Registrado por:</strong> {selectedTransfer.created_by}
+                </div>
+              </div>
+
+              <Form.Group className="mb-3">
+                <Form.Label><strong>Notas (opcional):</strong></Form.Label>
+                <Form.Control
+                  as="textarea"
+                  rows={3}
+                  placeholder="Ej: Transferencia nunca recibida. Verificado con banco..."
+                  value={sinpaNotes}
+                  onChange={(e) => setSinpaNotes(e.target.value)}
+                />
+              </Form.Group>
+
+              <Alert variant="warning" className="mb-0">
+                <small>
+                  <strong>Esta acción:</strong><br />
+                  ✓ Eliminará la transferencia pendiente<br />
+                  ✓ Marcará el vehículo como SINPA<br />
+                  ✓ Añadirá a lista negra automáticamente<br />
+                  ✓ Registrará como deuda en el sistema<br />
+                  ⚠️ NO se puede deshacer
+                </small>
+              </Alert>
+            </>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowSinpaModal(false)}>
+            Cancelar
+          </Button>
+          <Button variant="danger" onClick={handleConfirmSinpa}>
+            🚨 Sí, Marcar como SINPA
           </Button>
         </Modal.Footer>
       </Modal>
