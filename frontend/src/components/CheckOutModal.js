@@ -25,6 +25,18 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
   const [showVisitorModal, setShowVisitorModal] = useState(false);
   const [visitorLoading, setVisitorLoading] = useState(false);
 
+  // Función para obtener precio por noche según tipo de plaza
+  const getPricePerNight = (spotType) => {
+    const prices = {
+      'A': 10,
+      'B': 12,
+      'CB': 12,
+      'C': 16,
+      'CPLUS': 32
+    };
+    return prices[spotType] || 10; // Default 10€ si no se encuentra
+  };
+
   useEffect(() => {
     if (stay && stay.check_in_time) {
       initializeTimes();
@@ -78,7 +90,9 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
     // Calcular precio solo si no hay prepago
     if (!stay.prepaid_amount) {
       const nights = Math.ceil(days);
-      const calculatedPrice = nights * 10; // 10€/noche - ajusta según tu tarifa
+      const spotType = stay.parking_spot?.spot_type || 'A';
+      const pricePerNight = getPricePerNight(spotType);
+      const calculatedPrice = nights * pricePerNight;
       setFinalPrice(calculatedPrice.toFixed(2));
     }
   };
@@ -263,6 +277,8 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
   if (!stay) return null;
 
   const alreadyPaid = stay.payment_status === 'prepaid';
+  const spotType = stay.parking_spot?.spot_type || 'A';
+  const pricePerNight = getPricePerNight(spotType);
 
   return (
     <>
@@ -292,6 +308,10 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                       ? `${stay.parking_spot.spot_type} - ${stay.parking_spot.spot_number}` 
                       : 'No asignada'}
                   </span>
+                </div>
+                <div className="detail-row">
+                  <strong>Tarifa:</strong>
+                  <span className="text-success">{pricePerNight}€/noche</span>
                 </div>
               </div>
               
@@ -353,7 +373,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                     disabled={loading || printing}
                   />
                   <Form.Text className="text-muted">
-                    Precio calculado automáticamente según noches. Puede modificarlo si es necesario.
+                    Precio calculado: {Math.ceil(parseFloat(duration || 0))} noches × {pricePerNight}€ = {(Math.ceil(parseFloat(duration || 0)) * pricePerNight).toFixed(2)}€
                   </Form.Text>
                 </Form.Group>
 

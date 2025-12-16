@@ -12,6 +12,18 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
   const [newCheckoutDate, setNewCheckoutDate] = useState('');
   const [currentNights, setCurrentNights] = useState(0);
 
+  // Función para obtener precio por noche según tipo de plaza
+  const getPricePerNight = (spotType) => {
+    const prices = {
+      'A': 10,
+      'B': 12,
+      'CB': 12,
+      'C': 16,
+      'CPLUS': 32
+    };
+    return prices[spotType] || 10; // Default 10€ si no se encuentra
+  };
+
   useEffect(() => {
     if (stay) {
       calculateCurrentNights();
@@ -44,8 +56,9 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
       minute: '2-digit'
     }));
 
-    // Calcular importe adicional (10€/noche - ajusta según tu tarifa)
-    const pricePerNight = 10;
+    // Calcular importe adicional según tipo de plaza
+    const spotType = stay.parking_spot?.spot_type || 'A';
+    const pricePerNight = getPricePerNight(spotType);
     const calculatedAmount = nightsToAdd * pricePerNight;
     setAdditionalAmount(calculatedAmount.toFixed(2));
   };
@@ -68,8 +81,8 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
         license_plate: stay.vehicle.license_plate,
         check_in_time: stay.check_in_time,
         check_out_time: newCheckout.toISOString(),
-        nights: parseInt(nightsToAdd),  // ← Solo noches AÑADIDAS
-        amount: parseFloat(additionalAmount),  // ← Solo importe de extensión
+        nights: parseInt(nightsToAdd),
+        amount: parseFloat(additionalAmount),
         spot_type: spotType
       };
 
@@ -152,6 +165,8 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
 
   const totalNights = currentNights + parseInt(nightsToAdd);
   const totalAmount = (parseFloat(stay.prepaid_amount || 0) + parseFloat(additionalAmount || 0)).toFixed(2);
+  const spotType = stay.parking_spot?.spot_type || 'A';
+  const pricePerNight = getPricePerNight(spotType);
 
   return (
     <Modal show={show} onHide={handleClose} centered size="lg">
@@ -173,6 +188,18 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
               <div className="detail-row mb-2">
                 <strong>Matrícula:</strong>
                 <span className="license-plate-display ms-2">{stay.vehicle.license_plate}</span>
+              </div>
+              <div className="detail-row mb-2">
+                <strong>Plaza:</strong>
+                <span className="ms-2">
+                  {stay.parking_spot 
+                    ? `${stay.parking_spot.spot_type} - ${stay.parking_spot.spot_number}` 
+                    : 'No asignada'}
+                </span>
+              </div>
+              <div className="detail-row mb-2">
+                <strong>Tarifa:</strong>
+                <span className="text-success ms-2">{pricePerNight}€/noche</span>
               </div>
               <div className="detail-row mb-2">
                 <strong>Noches actuales:</strong>
@@ -247,7 +274,7 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
               required
             />
             <Form.Text className="text-muted">
-              Precio sugerido: {nightsToAdd} noche{nightsToAdd > 1 ? 's' : ''} × 10€ = {(nightsToAdd * 10).toFixed(2)}€
+              Precio sugerido: {nightsToAdd} noche{nightsToAdd > 1 ? 's' : ''} × {pricePerNight}€ = {(nightsToAdd * pricePerNight).toFixed(2)}€
             </Form.Text>
           </Form.Group>
 

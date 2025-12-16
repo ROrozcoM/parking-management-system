@@ -12,6 +12,18 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
   const [error, setError] = useState(null);
   const [nights, setNights] = useState(0);
 
+  // Función para obtener precio por noche según tipo de plaza
+  const getPricePerNight = (spotType) => {
+    const prices = {
+      'A': 10,
+      'B': 12,
+      'CB': 12,
+      'C': 16,
+      'CPLUS': 32
+    };
+    return prices[spotType] || 10; // Default 10€ si no se encuentra
+  };
+
   useEffect(() => {
     if (stay) {
       initializeTimes();
@@ -57,11 +69,11 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
     const calculatedNights = Math.ceil(days);
     setNights(calculatedNights);
 
-    // Calcular precio sugerido (10€/noche - ajusta según tu tarifa)
-    const suggestedPrice = calculatedNights * 10;
-    if (!amount) {
-      setAmount(suggestedPrice.toFixed(2));
-    }
+    // Calcular precio sugerido según tipo de plaza
+    const spotType = stay.parking_spot?.spot_type || 'A';
+    const pricePerNight = getPricePerNight(spotType);
+    const suggestedPrice = calculatedNights * pricePerNight;
+    setAmount(suggestedPrice.toFixed(2));  // ← SIEMPRE actualizar
   };
 
   const handlePrintTicket = async () => {
@@ -83,9 +95,9 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
         license_plate: stay.vehicle.license_plate,
         check_in_time: checkInTime,
         check_out_time: checkOutTime,
-        nights: calculatedNights,  // ← AÑADIR
+        nights: calculatedNights,
         amount: parseFloat(amount),
-        spot_type: spotType  // ← AÑADIR
+        spot_type: spotType
       };
 
       const result = await staysAPI.printTicket(ticketData);
@@ -173,6 +185,9 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
 
   if (!stay) return null;
 
+  const spotType = stay.parking_spot?.spot_type || 'A';
+  const pricePerNight = getPricePerNight(spotType);
+
   return (
     <Modal show={show} onHide={handleClose} centered size="lg">
       <Modal.Header closeButton>
@@ -202,6 +217,10 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
                 ? `${stay.parking_spot.spot_type} - ${stay.parking_spot.spot_number}` 
                 : 'No asignada'}
             </span>
+          </div>
+          <div className="detail-row">
+            <strong>Tarifa:</strong>
+            <span className="text-success">{pricePerNight}€/noche</span>
           </div>
         </div>
 
@@ -255,7 +274,7 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
               disabled={loading || printing}
             />
             <Form.Text className="text-muted">
-              Precio calculado: {nights} noche{nights !== 1 ? 's' : ''} × 10€ = {(nights * 10).toFixed(2)}€
+              Precio calculado: {nights} noche{nights !== 1 ? 's' : ''} × {pricePerNight}€ = {(nights * pricePerNight).toFixed(2)}€
             </Form.Text>
           </Form.Group>
 
