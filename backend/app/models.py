@@ -158,6 +158,7 @@ class TransactionType(str, enum.Enum):
     WITHDRAWAL = "withdrawal"
     ADJUSTMENT = "adjustment"
     INITIAL = "initial"
+    PRODUCT_SALE = "product_sale"
 
 class CashSession(Base):
     __tablename__ = "cash_sessions"
@@ -215,6 +216,10 @@ class CashTransaction(Base):
     
     # Relación con Stay
     stay_id = Column(Integer, ForeignKey("stays.id"), nullable=True)
+
+    # Productos extra
+    product_id = Column(Integer, ForeignKey("products.id"), nullable=True)
+    product_name = Column(String, nullable=True)  # Para ventas de "Otro"
     
     # Importes
     amount_due = Column(Float)
@@ -230,6 +235,7 @@ class CashTransaction(Base):
     session = relationship("CashSession", back_populates="transactions")
     stay = relationship("Stay", foreign_keys=[stay_id])  # ← ESPECIFICAR foreign_keys
     user = relationship("User")
+    product = relationship("Product", back_populates="transactions")
 
 class PendingTransfer(Base):
     """
@@ -261,3 +267,20 @@ class PendingTransfer(Base):
     stay = relationship("Stay", back_populates="pending_transfers")
     created_by = relationship("User", foreign_keys=[created_by_user_id])
     confirmed_by = relationship("User", foreign_keys=[confirmed_by_user_id])
+
+
+class Product(Base):
+    """
+    Catálogo de productos vendibles (agua, pastillas, etc.)
+    """
+    __tablename__ = "products"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    name = Column(String, nullable=False)
+    price = Column(Float, nullable=False)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(ZoneInfo("Europe/Madrid")))
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(ZoneInfo("Europe/Madrid")), onupdate=lambda: datetime.now(ZoneInfo("Europe/Madrid")))
+    
+    # Relaciones
+    transactions = relationship("CashTransaction", back_populates="product")

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { cashAPI } from '../services/api';
 import { Modal, Button, Form, Alert } from 'react-bootstrap';
 import { OpenCashModal, RegisterPendingModal, CloseCashModal, WithdrawalModal } from '../components/CashRegisterModals';
+import ProductSaleModal from '../components/ProductSaleModal';
 
 
 function CashRegister() {
@@ -16,6 +17,7 @@ function CashRegister() {
   const [showCloseModal, setShowCloseModal] = useState(false);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
+  const [showProductSaleModal, setShowProductSaleModal] = useState(false);
   const [selectedPending, setSelectedPending] = useState(null);
 
   useEffect(() => {
@@ -117,6 +119,11 @@ function CashRegister() {
     } catch (err) {
       alert('Error al registrar retiro: ' + (err.response?.data?.detail || err.message));
     }
+  };
+
+  const handleProductSaleSuccess = () => {
+    setShowProductSaleModal(false);
+    fetchData();
   };
 
   
@@ -241,6 +248,9 @@ function CashRegister() {
           </div>
 
           <div style={{ display: 'flex', gap: '1rem', justifyContent: 'center' }}>
+            <Button variant="success" onClick={() => setShowProductSaleModal(true)}>
+              🛒 Venta de Productos
+            </Button>
             <Button variant="warning" onClick={() => setShowWithdrawalModal(true)}>
               💸 Registrar Retiro
             </Button>
@@ -251,8 +261,8 @@ function CashRegister() {
         </div>
       </div>
 
-      {/* Transacciones pendientes */}
-      {pendingTransactions.length > 0 && (
+      {/* Transacciones pendientes - COMENTADO: Ya se gestionan desde Dashboard */}
+      {/* {pendingTransactions.length > 0 && (
         <div className="card" style={{ marginBottom: '2rem' }}>
           <div className="card-header" style={{ backgroundColor: '#fff3cd' }}>
             <h2 style={{ margin: 0, color: '#856404' }}>
@@ -301,7 +311,7 @@ function CashRegister() {
             </div>
           </div>
         </div>
-      )}
+      )} */}
 
       {/* Historial de transacciones del día */}
       <div className="card">
@@ -389,6 +399,12 @@ function CashRegister() {
         onHide={() => setShowWithdrawalModal(false)}
         onWithdrawal={handleWithdrawal}
       />
+
+      <ProductSaleModal
+        show={showProductSaleModal}
+        onHide={() => setShowProductSaleModal(false)}
+        onSuccess={handleProductSaleSuccess}
+      />
     </div>
   );
 }
@@ -400,7 +416,8 @@ function getTransactionIcon(type) {
     'prepayment': '📝',
     'withdrawal': '💸',
     'initial': '🔓',
-    'adjustment': '⚙️'
+    'adjustment': '⚙️',
+    'product_sale': '🛒'
   };
   return icons[type] || '📋';
 }

@@ -41,6 +41,7 @@ class TransactionType(str, Enum):
     WITHDRAWAL = "withdrawal"
     ADJUSTMENT = "adjustment"
     INITIAL = "initial"
+    PRODUCT_SALE = "product_sale"
 
 class UserRole(str, Enum):
     ADMIN = "admin"

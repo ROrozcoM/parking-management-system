@@ -1288,7 +1288,7 @@ def calculate_expected_by_method(db: Session, session_id: int):
         amount = tx.amount_due
         
         # INGRESOS
-        if tx.transaction_type in [models.TransactionType.CHECKOUT, models.TransactionType.PREPAYMENT]:
+        if tx.transaction_type in [models.TransactionType.CHECKOUT, models.TransactionType.PREPAYMENT, models.TransactionType.PRODUCT_SALE]:
             if tx.payment_method == models.PaymentMethod.CASH:
                 expected_cash += amount
             elif tx.payment_method == models.PaymentMethod.CARD:
@@ -1360,7 +1360,8 @@ def get_cash_session_summary(db: Session, session_id: int):
             models.CashTransaction.cash_session_id == session_id,
             models.CashTransaction.transaction_type.in_([
                 models.TransactionType.CHECKOUT,
-                models.TransactionType.PREPAYMENT
+                models.TransactionType.PREPAYMENT,
+                models.TransactionType.PRODUCT_SALE
             ]),
             models.CashTransaction.payment_method == models.PaymentMethod.CASH
         )

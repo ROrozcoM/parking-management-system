@@ -1,5 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
+from typing import Optional
+from pydantic import BaseModel
 from typing import List
 from app.database import get_db
 from app import models, schemas, crud
@@ -7,6 +9,13 @@ from app.dependencies import get_current_active_user
 
 router = APIRouter(prefix="/cash", tags=["cash"])
 
+# Esquema para venta de productos
+class ProductSaleRequest(BaseModel):
+    product_id: Optional[int] = None
+    product_name: Optional[str] = None
+    quantity: int = 1
+    unit_price: Optional[float] = None
+    payment_method: models.PaymentMethod = models.PaymentMethod.CASH
 
 @router.get("/active-session", response_model=schemas.CashSessionSummary)
 async def get_active_session(
@@ -344,4 +353,112 @@ async def undo_transaction(
     return {
         "success": True,
         "message": "Transacción eliminada correctamente"
+    }
+
+
+
+
+@router.post("/product-sale")
+async def register_product_sale(
+    sale_data: ProductSaleRequest,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """
+    Registra una venta de producto.
+    - Si product_id: usa producto del catálogo
+    - Si product_name + unit_price: venta de "Otro" producto
+    - TODAS las ventas se registran directamente en caja (efectivo, tarjeta, transferencia)
+    """
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    
+    # Validaciones
+    if sale_data.quantity <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="La cantidad debe ser mayor a 0"
+        )
+    
+    # Determinar producto y precio
+    product = None
+    final_product_name = None
+    final_unit_price = None
+    
+    if sale_data.product_id:
+        # Producto del catálogo
+        product = db.query(models.Product).filter(
+            models.Product.id == sale_data.product_id,
+            models.Product.is_active == True
+        ).first()
+        
+        if not product:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Producto no encontrado o inactivo"
+            )
+        
+        # Si viene unit_price del frontend, usar ese (precio editado)
+        # Si no, usar el del catálogo
+        final_product_name = sale_data.product_name if sale_data.product_name else product.name
+        final_unit_price = sale_data.unit_price if sale_data.unit_price else product.price
+        
+    elif sale_data.product_name and sale_data.unit_price:
+        # Producto "Otro" con precio manual
+        if sale_data.unit_price <= 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="El precio debe ser mayor a 0"
+            )
+        
+        final_product_name = sale_data.product_name.strip()
+        final_unit_price = sale_data.unit_price
+        
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Debe proporcionar product_id O (product_name + unit_price)"
+        )
+    
+    # Calcular total
+    total_amount = final_unit_price * sale_data.quantity
+    
+    # Verificar que hay caja abierta
+    active_session = db.query(models.CashSession).filter(
+        models.CashSession.status == models.CashSessionStatus.OPEN
+    ).first()
+    
+    if not active_session:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No hay caja abierta. Por favor, abre la caja antes de registrar ventas."
+        )
+    
+    # Registrar transacción (SIEMPRE directo a caja)
+    transaction = models.CashTransaction(
+        cash_session_id=active_session.id,
+        transaction_type=models.TransactionType.PRODUCT_SALE,
+        product_id=product.id if product else None,
+        product_name=final_product_name,
+        amount_due=total_amount,
+        amount_paid=total_amount,
+        change_given=0,
+        payment_method=sale_data.payment_method,
+        user_id=current_user.id,
+        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+        notes=f"{sale_data.quantity}x {final_product_name} @ {final_unit_price:.2f}€"
+    )
+    db.add(transaction)
+    db.commit()
+    db.refresh(transaction)
+    
+    return {
+        "success": True,
+        "message": "Venta registrada en caja correctamente",
+        "transaction_id": transaction.id,
+        "product_name": final_product_name,
+        "quantity": sale_data.quantity,
+        "unit_price": final_unit_price,
+        "total_amount": total_amount,
+        "payment_method": sale_data.payment_method.value
     }
