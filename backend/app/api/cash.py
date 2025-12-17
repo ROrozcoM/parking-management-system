@@ -190,14 +190,7 @@ async def register_withdrawal(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
-    """Registra un retiro de caja (solo admin)"""
-    # Verificar que es admin
-    if current_user.role != models.UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo administradores pueden realizar retiros"
-        )
-    
+    """Registra un retiro de caja"""
     session = crud.get_active_cash_session(db)
     if not session:
         raise HTTPException(

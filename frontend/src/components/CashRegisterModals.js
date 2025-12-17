@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Button, Form, Alert } from 'react-bootstrap';
+import { Modal, Button, Form, Alert, Badge } from 'react-bootstrap';
 
 // Modal para abrir caja
 function OpenCashModal({ show, onHide, onOpen }) {
@@ -499,10 +499,11 @@ function CloseCashModal({ show, onHide, session, onClose, hasPending }) {
               </div>
             </div>
 
+            {/* AQUÍ ESTÁ EL CAMBIO - Diferencia de efectivo con indicador visual mejorado */}
             <div className="mt-3 p-3 bg-light rounded">
               <div className="d-flex justify-content-between mb-2">
                 <span>Total efectivo contado:</span>
-                <strong className={cashDifference === 0 ? 'text-success' : 'text-warning'}>
+                <strong className={cashDifference === 0 ? 'text-success' : cashDifference > 0 ? 'text-success' : 'text-warning'}>
                   {cashTotal.toFixed(2)} €
                 </strong>
               </div>
@@ -510,12 +511,31 @@ function CloseCashModal({ show, onHide, session, onClose, hasPending }) {
                 <span>Esperado:</span>
                 <span>{preCloseInfo.expected_cash.toFixed(2)} €</span>
               </div>
-              <div className="d-flex justify-content-between">
+              <div className="d-flex justify-content-between align-items-center">
                 <span>Diferencia:</span>
-                <strong className={cashDifference === 0 ? 'text-success' : 'text-danger'}>
-                  {cashDifference > 0 ? '+' : ''}{cashDifference.toFixed(2)} €
-                  {cashDifference === 0 ? ' ✅' : ' ⚠️'}
-                </strong>
+                <div>
+                  {cashDifference > 0 ? (
+                    // SOBRA DINERO - Verde intenso con badge
+                    <div className="d-flex align-items-center gap-2">
+                      <strong className="text-success fs-5">
+                        +{cashDifference.toFixed(2)} € 
+                      </strong>
+                      <Badge bg="success" className="fs-6">
+                        🍺 ¡Momento birras!
+                      </Badge>
+                    </div>
+                  ) : cashDifference === 0 ? (
+                    // CUADRA PERFECTO
+                    <strong className="text-success">
+                      {cashDifference.toFixed(2)} € ✅
+                    </strong>
+                  ) : (
+                    // FALTA DINERO - Rojo
+                    <strong className="text-danger">
+                      {cashDifference.toFixed(2)} € ⚠️
+                    </strong>
+                  )}
+                </div>
               </div>
             </div>
 
