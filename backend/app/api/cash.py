@@ -46,13 +46,6 @@ async def get_pre_close_info_endpoint(
     - Sugerencias de retiro
     - Transacciones pendientes
     """
-    # Verificar que es admin
-    if current_user.role != models.UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo administradores pueden consultar esta información"
-        )
-    
     # Obtener sesión activa
     session = crud.get_active_cash_session(db)
     if not session:
@@ -79,14 +72,7 @@ async def open_session(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
-    """Abre una nueva sesión de caja (solo admin)"""
-    # Verificar que es admin
-    if current_user.role != models.UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo administradores pueden abrir caja"
-        )
-    
+    """Abre una nueva sesión de caja"""
     try:
         session = crud.open_cash_session(db, session_data.initial_amount, current_user.id)
         return session
@@ -108,13 +94,6 @@ async def close_session(
     Cierra una sesión de caja con desglose completo de billetes y métodos.
     Envía email automático al cerrar.
     """
-    # Verificar que es admin
-    if current_user.role != models.UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo administradores pueden cerrar caja"
-        )
-    
     try:
         session = crud.close_cash_session_with_breakdown(
             db=db,
@@ -141,7 +120,7 @@ async def close_session(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error al cerrar caja: {str(e)}"
         )
-
+    
 
 @router.get("/pending-transactions", response_model=schemas.PendingTransactionsList)
 async def get_pending_transactions(
