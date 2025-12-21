@@ -77,52 +77,30 @@ async def print_ticket_endpoint(
     ticket_data: schemas.PrintTicketRequest,
     current_user: models.User = Depends(get_current_active_user)
 ):
-    """Imprime un ticket enviando petición al servidor de impresión en Windows"""
+    """Imprime un ticket llamando directamente al módulo print_ticket (sin Flask)"""
     
     try:
-        # URL del servidor Flask en Windows (tu IP de Windows)
-        PRINTER_SERVER_URL = "http://192.168.1.184:9200/print"
+        from app.print_ticket import print_ticket
+        import os
         
-        # Formatear fechas
-        entry_dt = datetime.fromisoformat(ticket_data.check_in_time.replace('Z', '+00:00'))
-        entry_formatted = entry_dt.strftime('%d/%m/%Y')
+        # Obtener configuración de impresora desde variables de entorno
+        PRINTER_HOST = os.getenv("PRINTER_HOST", "192.168.1.100")
+        PRINTER_PORT = int(os.getenv("PRINTER_PORT", "9100"))
         
-        exit_formatted = None
-        nights = 0
-        if ticket_data.check_out_time:
-            exit_dt = datetime.fromisoformat(ticket_data.check_out_time.replace('Z', '+00:00'))
-            exit_formatted = exit_dt.strftime('%d/%m/%Y')
-            # Calcular noches
-            duration = exit_dt - entry_dt
-            nights = max(1, int(duration.total_seconds() / (24 * 3600)))
+        # Llamar a la función de impresión
+        result = print_ticket(
+            ticket_type=ticket_data.type,
+            license_plate=ticket_data.license_plate,
+            check_in_time=ticket_data.check_in_time,
+            check_out_time=ticket_data.check_out_time,
+            amount=ticket_data.amount,
+            spot_type=ticket_data.spot_type,
+            printer_host=PRINTER_HOST,
+            printer_port=PRINTER_PORT
+        )
         
-        # Preparar datos para el servidor de impresión
-        payload = {
-            "type": ticket_data.type,
-            "license": ticket_data.license_plate,
-            "entry": entry_formatted,
-            "exit": exit_formatted,
-            "nights": nights,
-            "amount": ticket_data.amount,
-            "spot_type": ticket_data.spot_type
-        }
-        
-        # Enviar a servidor de impresión
-        response = requests.post(PRINTER_SERVER_URL, json=payload, timeout=15)
-        
-        if response.status_code == 200:
-            return {"success": True, "message": "Ticket impreso correctamente"}
-        else:
-            error_data = response.json()
-            return {
-                "success": False,
-                "message": f"Error al imprimir: {error_data.get('message', 'Unknown error')}"
-            }
+        return result
             
-    except requests.exceptions.Timeout:
-        return {"success": False, "message": "Timeout al comunicar con la impresora"}
-    except requests.exceptions.ConnectionError:
-        return {"success": False, "message": "No se puede conectar al servidor de impresión. ¿Está corriendo printer_server.py?"}
     except Exception as e:
         return {"success": False, "message": f"Error: {str(e)}"}
 
