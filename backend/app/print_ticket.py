@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
 Módulo de impresión térmica para Raspberry Pi
-Envía comandos ESC/POS directamente por socket (sin Flask)
+Envía comandos ESC/POS directamente por USB
 """
 
-import socket
 import os
 from PIL import Image
 from pathlib import Path
@@ -66,7 +65,7 @@ def print_ticket(ticket_type: str, license_plate: str, check_in_time: str,
                  amount: float, check_out_time: str = None, spot_type: str = None,
                  printer_host: str = "192.168.1.100", printer_port: int = 9100):
     """
-    Imprime ticket térmico directamente por socket
+    Imprime ticket térmico directamente por USB
     
     Args:
         ticket_type: 'checkout', 'prepayment', 'extension', 'open_exit'
@@ -75,8 +74,8 @@ def print_ticket(ticket_type: str, license_plate: str, check_in_time: str,
         amount: Importe total
         check_out_time: Fecha salida (ISO format, opcional)
         spot_type: Tipo de plaza ('A', 'B', 'C', 'Special')
-        printer_host: IP de la impresora
-        printer_port: Puerto de la impresora
+        printer_host: No se usa (compatibilidad)
+        printer_port: No se usa (compatibilidad)
     
     Returns:
         dict: {"success": bool, "message": str}
@@ -110,10 +109,9 @@ def print_ticket(ticket_type: str, license_plate: str, check_in_time: str,
         BOLD_OFF = ESC + b'E' + b'\x00'
         CUT = GS + b'V' + b'\x00'
         
-        # Conectar a impresora
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(10)
-        sock.connect((printer_host, printer_port))
+        # Conectar a impresora USB
+        printer_device = "/dev/usb/lp0"
+        printer = open(printer_device, 'wb')
         
         ticket = b''
         ticket += INIT
@@ -214,17 +212,18 @@ def print_ticket(ticket_type: str, license_plate: str, check_in_time: str,
         # Cortar
         ticket += CUT
         
-        # Enviar
-        sock.sendall(ticket)
-        sock.close()
+        # Enviar a USB
+        printer.write(ticket)
+        printer.flush()
+        printer.close()
         
-        print(f"✓ Ticket {ticket_type} impreso correctamente")
+        print(f"✓ Ticket {ticket_type} impreso correctamente por USB")
         return {"success": True, "message": "Ticket impreso correctamente"}
         
-    except socket.timeout:
-        return {"success": False, "message": "Timeout: la impresora no responde"}
-    except ConnectionRefusedError:
-        return {"success": False, "message": "No se puede conectar a la impresora. Verifica IP y puerto."}
+    except FileNotFoundError:
+        return {"success": False, "message": "Impresora USB no encontrada en /dev/usb/lp0"}
+    except PermissionError:
+        return {"success": False, "message": "Sin permisos para acceder a la impresora USB. Ejecuta: sudo usermod -aG lp camperparkrpi"}
     except Exception as e:
         print(f"✗ Error al imprimir: {e}")
         return {"success": False, "message": f"Error al imprimir: {str(e)}"}
