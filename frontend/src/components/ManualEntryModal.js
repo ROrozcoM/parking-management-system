@@ -84,7 +84,7 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
   const [error, setError] = useState(null);
   const [blacklistInfo, setBlacklistInfo] = useState(null);
   const [checkingBlacklist, setCheckingBlacklist] = useState(false);
-  const [forceCheckIn, setForceCheckIn] = useState(false);
+  const [sinpaAction, setSinpaAction] = useState('keep'); // 'keep' o 'remove'
   const [customerHistory, setCustomerHistory] = useState(null);
   const [checkingHistory, setCheckingHistory] = useState(false);
 
@@ -122,7 +122,7 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
     setLicensePlate(value);
     setBlacklistInfo(null);
     setCustomerHistory(null);
-    setForceCheckIn(false);
+    setSinpaAction('keep');
     
     if (value.length >= 4) {
       checkBlacklist(value);
@@ -177,8 +177,8 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    if (blacklistInfo?.is_blacklisted && !forceCheckIn) {
-      setError('Este vehículo está en lista negra. Debe confirmar para continuar.');
+    if (blacklistInfo?.is_blacklisted && sinpaAction === 'keep') {
+      setError('Debe seleccionar una opción para continuar con el check-in.');
       return;
     }
     
@@ -187,6 +187,7 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
       setError(null);
 
       const checkInTimeISO = checkInTime ? new Date(checkInTime).toISOString() : null;
+      const removeSinpa = sinpaAction === 'remove';
       
       await staysAPI.createManualEntry(
         licensePlate, 
@@ -194,7 +195,8 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
         spotType, 
         country, 
         isRental,
-        checkInTimeISO
+        checkInTimeISO,
+        removeSinpa
       );
       onSuccess();
       
@@ -206,7 +208,7 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
       setCheckInTime(getCurrentDateTime());
       setBlacklistInfo(null);
       setCustomerHistory(null);
-      setForceCheckIn(false);
+      setSinpaAction('keep');
     } catch (err) {
       setError('Failed to create manual entry');
       console.error(err);
@@ -224,7 +226,7 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
     setCheckInTime('');
     setBlacklistInfo(null);
     setCustomerHistory(null);
-    setForceCheckIn(false);
+    setSinpaAction('keep');
     setError(null);
     onHide();
   };
@@ -271,14 +273,35 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
             ))}
 
             <hr />
-            <Form.Check 
-              type="checkbox"
-              id="force-checkin-manual"
-              label="He verificado la situación y deseo permitir el check-in de todos modos"
-              checked={forceCheckIn}
-              onChange={(e) => setForceCheckIn(e.target.checked)}
-              className="fw-bold"
+            <div className="mb-3">
+              <strong>¿Qué deseas hacer con este SINPA?</strong>
+            </div>
+            
+            <Form.Check
+              type="radio"
+              id="sinpa-keep-manual"
+              name="sinpaAction"
+              label="✓ Check-in Normal (Mantener SINPA y deuda activa)"
+              checked={sinpaAction === 'keep'}
+              onChange={() => setSinpaAction('keep')}
+              className="mb-2"
             />
+            <Form.Text className="d-block text-muted mb-3 ms-4">
+              El vehículo entrará pero permanecerá en lista negra. La deuda sigue activa. Si paga la deuda, eliminar el SINPA de aquel día de forma manual (en History)
+            </Form.Text>
+            
+            <Form.Check
+              type="radio"
+              id="sinpa-remove-manual"
+              name="sinpaAction"
+              label="🗑️ Check-in + Eliminar SINPA (Ha vuelto con las orejas gachas)"
+              checked={sinpaAction === 'remove'}
+              onChange={() => setSinpaAction('remove')}
+              className="mb-2 fw-bold"
+            />
+            <Form.Text className="d-block text-muted ms-4">
+              Se eliminará de lista negra y se liberará la deuda. Ha salido y entrado, pero ha vuelto
+            </Form.Text>
           </Alert>
         )}
 
@@ -400,9 +423,9 @@ function ManualEntryModal({ show, onHide, onSuccess }) {
             <Button 
               type="submit" 
               variant="primary" 
-              disabled={loading || checkingBlacklist || checkingHistory || (blacklistInfo?.is_blacklisted && !forceCheckIn)}
+              disabled={loading || checkingBlacklist || checkingHistory}
             >
-              {loading ? 'Creating...' : 'Create Entry'}
+              {loading ? 'Creating...' : `Create Entry${sinpaAction === 'remove' ? ' + Eliminar SINPA' : ''}`}
             </Button>
           </div>
         </Form>

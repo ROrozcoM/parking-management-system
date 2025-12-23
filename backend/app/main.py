@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Query
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from app.database import engine, get_db
@@ -192,21 +192,50 @@ async def get_blacklist(
 @app.post("/api/blacklist/{blacklist_id}/resolve")
 async def resolve_blacklist(
     blacklist_id: int,
+    paid: bool = Query(False, description="Si el cliente pagó la deuda"),
+    payment_method: Optional[str] = Query(None, description="Método de pago: cash, card, transfer"),
+    notes: Optional[str] = Query(None, description="Notas adicionales"),
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
-    """Marca una entrada de lista negra como resuelta"""
-    entry = resolve_blacklist_entry(db, blacklist_id, current_user.id)
+    """
+    Marca una entrada de lista negra como resuelta.
     
-    if not entry:
-        raise HTTPException(status_code=404, detail="Blacklist entry not found")
-    
-    return {
-        "success": True,
-        "message": "Entrada de lista negra resuelta",
-        "entry": entry
-    }
-
+    - Si paid=False: Solo marca como resuelto (deuda perdonada)
+    - Si paid=True: Marca como resuelto + registra pago en caja activa
+    """
+    try:
+        entry = resolve_blacklist_entry(
+            db, 
+            blacklist_id, 
+            current_user.id, 
+            paid=paid, 
+            payment_method=payment_method, 
+            notes=notes
+        )
+        
+        if not entry:
+            raise HTTPException(status_code=404, detail="Blacklist entry not found")
+        
+        message = "Deuda pagada y registrada en caja" if paid else "Deuda perdonada"
+        
+        return {
+            "success": True,
+            "message": f"Entrada de lista negra resuelta - {message}",
+            "entry": {
+                "id": entry.id,
+                "vehicle_id": entry.vehicle_id,
+                "license_plate": entry.vehicle.license_plate,
+                "amount_owed": entry.amount_owed,
+                "resolved": entry.resolved,
+                "paid": paid
+            }
+        }
+        
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error al resolver entrada: {str(e)}")
 
 # ============================================================================
 # DEPENDENCIA PARA VERIFICAR ADMIN

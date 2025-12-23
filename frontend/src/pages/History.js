@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Button, Alert } from 'react-bootstrap';
 import { historyAPI } from '../services/api';
 import DeleteCheckoutModal from '../components/DeleteCheckoutModal';
+import DeleteSinpaModal from '../components/DeleteSinpaModal';
 
 function History() {
   const [logs, setLogs] = useState([]);
@@ -19,7 +20,7 @@ function History() {
   // Modal de eliminación
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   
-  // ← NUEVO: Modal de eliminar SINPA
+  // Modal de eliminar SINPA
   const [showDeleteSinpaModal, setShowDeleteSinpaModal] = useState(false);
 
   useEffect(() => {
@@ -68,6 +69,11 @@ function History() {
   };
 
   const handleCheckoutDeleted = () => {
+    fetchHistoryLogs();
+    fetchStats();
+  };
+
+  const handleSinpaResolved = () => {
     fetchHistoryLogs();
     fetchStats();
   };
@@ -245,13 +251,12 @@ function History() {
             >
               🗑️ Eliminar Checkout del Historial
             </button>
-            {/* ← NUEVO: Botón eliminar SINPA */}
             <button 
               className="btn btn-warning"
               onClick={() => setShowDeleteSinpaModal(true)}
               style={{ color: '#000' }}
             >
-              🚫 Eliminar SINPA de Lista Negra
+              🚫 Gestionar Lista Negra (SINPAs)
             </button>
           </div>
         </div>
@@ -348,50 +353,12 @@ function History() {
         onDeleted={handleCheckoutDeleted}
       />
 
-      {/* ← NUEVO: Modal de eliminar SINPA */}
-      <Modal 
-        show={showDeleteSinpaModal} 
+      {/* Modal de gestionar SINPAs */}
+      <DeleteSinpaModal
+        show={showDeleteSinpaModal}
         onHide={() => setShowDeleteSinpaModal(false)}
-        centered
-      >
-        <Modal.Header closeButton style={{ backgroundColor: '#fff3cd', borderBottom: '2px solid #ffc107' }}>
-          <Modal.Title>⚠️ Eliminar SINPA de Lista Negra</Modal.Title>
-        </Modal.Header>
-        <Modal.Body>
-          <Alert variant="warning">
-            <Alert.Heading>🚧 Para hacer esto contacta con el Agrónomo</Alert.Heading>
-            <p>
-              Esta funcionalidad aún no está implementada para no liarla.
-            </p>
-            <hr />
-            <p className="mb-0">
-              <strong>Por favor, contacta con el Agrónomo</strong> para eliminar entradas de la lista negra.
-              <br />
-              <small className="text-muted">
-                ⚠️ Vaya a ser que vuelva y te la líe...
-              </small>
-            </p>
-          </Alert>
-
-          <div style={{ 
-            backgroundColor: '#f8f9fa', 
-            padding: '1rem', 
-            borderRadius: '8px',
-            marginTop: '1rem'
-          }}>
-            <strong>📞 Información de contacto:</strong>
-            <div style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
-              <div>👨‍💻 Agrónomo (Developer)</div>
-              <div className="text-muted">676374405</div>
-            </div>
-          </div>
-        </Modal.Body>
-        <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowDeleteSinpaModal(false)}>
-            Cerrar
-          </Button>
-        </Modal.Footer>
-      </Modal>
+        onResolved={handleSinpaResolved}
+      />
       
       {/* Estilos CSS mejorados para badges */}
       <style>{`

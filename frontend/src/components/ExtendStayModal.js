@@ -100,7 +100,7 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
     }
   };
 
-  const handleSubmit = async (e) => {
+const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!nightsToAdd || nightsToAdd <= 0) {
@@ -138,6 +138,11 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
       const result = await response.json();
 
       if (result.success) {
+        // Mostrar alerta si no imprimió
+        if (!result.ticket_printed) {
+          alert(`⚠️ Extensión registrada correctamente, pero no se pudo imprimir el ticket automáticamente.\n\nUsa el botón "Generar Ticket" para imprimirlo manualmente.\n\nError: ${result.print_error || 'Desconocido'}`);
+        }
+        
         onSuccess();
         handleClose();
       } else {

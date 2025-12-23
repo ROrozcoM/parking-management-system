@@ -68,9 +68,13 @@ export const staysAPI = {
     return response.data;
   },
   
-  checkIn: async (stayId, spotType, isRental=false) => {
+  checkIn: async (stayId, spotType, isRental = false, removeSinpa = false) => {
     const response = await api.post(`/stays/${stayId}/check-in`, null, {
-      params: { spot_type: spotType, is_rental: isRental }
+      params: { 
+        spot_type: spotType, 
+        is_rental: isRental,
+        remove_sinpa: removeSinpa
+      }
     });
     return response.data;
   },
@@ -89,13 +93,14 @@ export const staysAPI = {
     return response.data;
   },
   
-  createManualEntry: async (licensePlate, vehicleType, spotType, country = 'Spain', isRental = false, checkInTime = null) => {
+  createManualEntry: async (licensePlate, vehicleType, spotType, country = 'Spain', isRental = false, checkInTime = null, removeSinpa = false) => {
     const params = {
       license_plate: licensePlate,
       vehicle_type: vehicleType,
       spot_type: spotType,
       country: country,
-      is_rental: isRental  // ← CORREGIDO: is_rental
+      is_rental: isRental,
+      remove_sinpa: removeSinpa
     };
     
     // Solo añadir check_in_time si se proporciona

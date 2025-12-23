@@ -76,12 +76,12 @@ const getNationalityInsult = (country) => {
 
 function CheckInModal({ show, onHide, stay, onSuccess }) {
   const [spotType, setSpotType] = useState('A');
-  const [isRental, setIsRental] = useState(false);  // ← NUEVO ESTADO
+  const [isRental, setIsRental] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [blacklistInfo, setBlacklistInfo] = useState(null);
   const [checkingBlacklist, setCheckingBlacklist] = useState(false);
-  const [forceCheckIn, setForceCheckIn] = useState(false);
+  const [sinpaAction, setSinpaAction] = useState('keep'); // 'keep' o 'remove'
   const [customerHistory, setCustomerHistory] = useState(null);
   const [checkingHistory, setCheckingHistory] = useState(false);
 
@@ -137,9 +137,9 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Si está en lista negra y no se ha forzado, no permitir
-    if (blacklistInfo?.is_blacklisted && !forceCheckIn) {
-      setError('Este vehículo está en lista negra. Debe confirmar para continuar.');
+    // Si está en lista negra y no se ha seleccionado ninguna opción, no permitir
+    if (blacklistInfo?.is_blacklisted && sinpaAction === 'keep') {
+      setError('Debe seleccionar una opción para continuar con el check-in.');
       return;
     }
     
@@ -147,7 +147,8 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
       setLoading(true);
       setError(null);
       
-      await staysAPI.checkIn(stay.id, spotType, isRental);  // ← PASAR isRental
+      const removeSinpa = sinpaAction === 'remove';
+      await staysAPI.checkIn(stay.id, spotType, isRental, removeSinpa);
       onSuccess();
       handleClose();
     } catch (err) {
@@ -159,10 +160,10 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
   };
 
   const handleClose = () => {
-    setForceCheckIn(false);
+    setSinpaAction('keep');
     setBlacklistInfo(null);
     setCustomerHistory(null);
-    setIsRental(false);  // ← RESET
+    setIsRental(false);
     onHide();
   };
 
@@ -210,14 +211,35 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
             ))}
 
             <hr />
-            <Form.Check 
-              type="checkbox"
-              id="force-checkin"
-              label="He verificado la situación y deseo permitir el check-in de todos modos"
-              checked={forceCheckIn}
-              onChange={(e) => setForceCheckIn(e.target.checked)}
-              className="fw-bold"
+            <div className="mb-3">
+              <strong>¿Qué deseas hacer con este SINPA?</strong>
+            </div>
+            
+            <Form.Check
+              type="radio"
+              id="sinpa-keep"
+              name="sinpaAction"
+              label="✓ Check-in Normal (Mantener SINPA y deuda activa)"
+              checked={sinpaAction === 'keep'}
+              onChange={() => setSinpaAction('keep')}
+              className="mb-2"
             />
+            <Form.Text className="d-block text-muted mb-3 ms-4">
+              El vehículo entrará pero permanecerá en lista negra. La deuda sigue activa. . Si paga la deuda, eliminar el SINPA de aquel día de forma manual (en History)
+            </Form.Text>
+            
+            <Form.Check
+              type="radio"
+              id="sinpa-remove"
+              name="sinpaAction"
+              label="🗑️ Check-in + Eliminar SINPA (Ha vuelto con las orejas gachas)"
+              checked={sinpaAction === 'remove'}
+              onChange={() => setSinpaAction('remove')}
+              className="mb-2 fw-bold"
+            />
+            <Form.Text className="d-block text-muted ms-4">
+              Se eliminará de lista negra y se liberará la deuda. Ha salido y entrado, pero ha vuelto
+            </Form.Text>
           </Alert>
         )}
 
@@ -293,7 +315,6 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
             </Form.Select>
           </Form.Group>
 
-          {/* NUEVO: CHECKBOX DE ALQUILER */}
           <Form.Group className="mb-3">
             <Form.Check 
               type="checkbox"
@@ -326,7 +347,7 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
             <Button 
               type="submit" 
               className="btn-check-in"
-              disabled={loading || checkingBlacklist || checkingHistory || (blacklistInfo?.is_blacklisted && !forceCheckIn)}
+              disabled={loading || checkingBlacklist || checkingHistory}
               style={{ minWidth: '120px' }}
             >
               {loading ? (
@@ -335,7 +356,7 @@ function CheckInModal({ show, onHide, stay, onSuccess }) {
                   Processing...
                 </>
               ) : (
-                <>✓ Check-in</>
+                <>✓ Check-in {sinpaAction === 'remove' && '+ Eliminar SINPA'}</>
               )}
             </Button>
           </div>

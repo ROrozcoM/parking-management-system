@@ -36,17 +36,24 @@ async def list_active_stays(
 async def check_in(
     stay_id: int,
     spot_type: models.SpotType,
-    is_rental: bool = Query(False),  # ← AÑADIR
+    is_rental: bool = Query(False),
+    remove_sinpa: bool = Query(False),  # ← NUEVO PARÁMETRO
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
+    """
+    Check-in de vehículo.
+    
+    Args:
+        remove_sinpa: Si True, elimina el vehículo de lista negra (SINPA fue un error - no había personal)
+    """
     # Actualizar is_rental del vehículo ANTES del check-in
     stay = get_stay(db, stay_id)
     if stay and stay.vehicle:
         stay.vehicle.is_rental = is_rental
         db.commit()
     
-    stay = check_in_stay(db, stay_id, spot_type, current_user.id)
+    stay = check_in_stay(db, stay_id, spot_type, current_user.id, remove_sinpa=remove_sinpa)
     if not stay:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -182,6 +189,7 @@ async def prepay_stay(
     """
     Prepayment con check-in implícito y registro automático en caja.
     Requiere que haya una sesión de caja abierta.
+    Imprime ticket automáticamente si la impresora está disponible.
     """
     stay = db.query(models.Stay).filter(models.Stay.id == stay_id).first()
     if not stay:
@@ -265,6 +273,38 @@ async def prepay_stay(
     db.commit()
     db.refresh(stay)
     
+    # ============================================================================
+    # IMPRESIÓN AUTOMÁTICA DE TICKET
+    # ============================================================================
+    ticket_printed = False
+    print_error_message = None
+    
+    try:
+        from app.print_ticket import print_ticket
+        
+        print_result = print_ticket(
+            ticket_type='prepayment',
+            license_plate=stay.vehicle.license_plate,
+            check_in_time=stay.check_in_time.isoformat(),
+            check_out_time=stay.check_out_time.isoformat(),
+            amount=prepayment_data.amount,
+            spot_type=stay.parking_spot.spot_type if stay.parking_spot else None
+        )
+        
+        ticket_printed = print_result.get("success", False)
+        if not ticket_printed:
+            print_error_message = print_result.get("message", "Error desconocido al imprimir")
+            print(f"⚠️ Prepago registrado pero ticket no impreso: {print_error_message}")
+        else:
+            print(f"✓ Ticket de prepago impreso automáticamente para {stay.vehicle.license_plate}")
+        
+    except Exception as e:
+        print(f"⚠️ Error al imprimir ticket automáticamente: {e}")
+        print_error_message = str(e)
+        ticket_printed = False
+    
+    # ============================================================================
+    
     return {
         "success": True,
         "message": "Prepayment recorded and check-in completed",
@@ -272,7 +312,9 @@ async def prepay_stay(
         "amount": prepayment_data.amount,
         "check_in_time": stay.check_in_time,
         "check_out_time_prevista": stay.check_out_time,
-        "status": stay.status.value
+        "status": stay.status.value,
+        "ticket_printed": ticket_printed,
+        "print_error": print_error_message
     }
 
 
@@ -298,10 +340,17 @@ async def create_manual_entry(
     spot_type: models.SpotType = Query(...),
     country: str = Query(..., min_length=1),
     is_rental: bool = Query(False),
-    check_in_time: str = Query(None),  # ← AÑADIR (ISO format string, opcional)
+    check_in_time: str = Query(None),
+    remove_sinpa: bool = Query(False),  # ← NUEVO PARÁMETRO
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
+    """
+    Crear entrada manual.
+    
+    Args:
+        remove_sinpa: Si True, elimina el vehículo de lista negra (SINPA fue un error - no había personal)
+    """
     # Parsear check_in_time si se proporciona
     parsed_check_in_time = None
     if check_in_time:
@@ -322,9 +371,9 @@ async def create_manual_entry(
         "spot_type": spot_type,
         "country": country,
         "is_rental": is_rental,
-        "check_in_time": parsed_check_in_time  # ← AÑADIR
+        "check_in_time": parsed_check_in_time
     }
-    stay = create_manual_stay(db, stay_data, current_user.id)
+    stay = create_manual_stay(db, stay_data, current_user.id, remove_sinpa=remove_sinpa)
     if not stay:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -420,6 +469,7 @@ async def extend_stay(
     """
     Extender estancia con registro automático en caja.
     Requiere que haya una sesión de caja abierta.
+    Imprime ticket automáticamente si la impresora está disponible.
     """
     stay = db.query(models.Stay).filter(models.Stay.id == stay_id).first()
     if not stay:
@@ -517,6 +567,38 @@ async def extend_stay(
     db.commit()
     db.refresh(stay)
     
+    # ============================================================================
+    # IMPRESIÓN AUTOMÁTICA DE TICKET
+    # ============================================================================
+    ticket_printed = False
+    print_error_message = None
+    
+    try:
+        from app.print_ticket import print_ticket
+        
+        print_result = print_ticket(
+            ticket_type='extension',
+            license_plate=stay.vehicle.license_plate,
+            check_in_time=stay.check_in_time.isoformat(),
+            check_out_time=new_checkout.isoformat(),
+            amount=extend_data.additional_amount,
+            spot_type=stay.parking_spot.spot_type if stay.parking_spot else None
+        )
+        
+        ticket_printed = print_result.get("success", False)
+        if not ticket_printed:
+            print_error_message = print_result.get("message", "Error desconocido al imprimir")
+            print(f"⚠️ Extensión registrada pero ticket no impreso: {print_error_message}")
+        else:
+            print(f"✓ Ticket de extensión impreso automáticamente para {stay.vehicle.license_plate}")
+        
+    except Exception as e:
+        print(f"⚠️ Error al imprimir ticket automáticamente: {e}")
+        print_error_message = str(e)
+        ticket_printed = False
+    
+    # ============================================================================
+    
     return {
         "success": True,
         "message": "Estancia extendida correctamente",
@@ -528,7 +610,9 @@ async def extend_stay(
         "payment_methods_used": {
             "original": original_payment_method.value if original_payment_method else None,
             "extension": extend_data.payment_method.value
-        }
+        },
+        "ticket_printed": ticket_printed,
+        "print_error": print_error_message
     }
 
 @router.get("/history/{license_plate}")

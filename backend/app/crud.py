@@ -70,7 +70,13 @@ def create_stay(db: Session, stay: schemas.StayCreate, user_id: Optional[int] = 
     db.refresh(db_stay)
     return db_stay
 
-def check_in_stay(db: Session, stay_id: int, spot_type: models.SpotType, user_id: int):
+def check_in_stay(db: Session, stay_id: int, spot_type: models.SpotType, user_id: int, remove_sinpa: bool = False):
+    """
+    Check-in de una estancia.
+    
+    Args:
+        remove_sinpa: Si True, elimina el vehículo de lista negra (SINPA fue un error)
+    """
     stay = get_stay(db, stay_id)
     if not stay:
         return None
@@ -86,6 +92,39 @@ def check_in_stay(db: Session, stay_id: int, spot_type: models.SpotType, user_id
     if not spot:
         return None
     
+    # ============================================================================
+    # ELIMINAR SINPA SI SE SOLICITA
+    # ============================================================================
+    if remove_sinpa:
+        # Buscar entradas en blacklist para este vehículo
+        blacklist_entries = db.query(models.Blacklist).filter(
+            models.Blacklist.vehicle_id == stay.vehicle_id,
+            models.Blacklist.resolved == False
+        ).all()
+        
+        if blacklist_entries:
+            total_debt_cleared = sum(entry.amount_owed for entry in blacklist_entries)
+            
+            # Eliminar todas las entradas de lista negra
+            for entry in blacklist_entries:
+                db.delete(entry)
+            
+            # Crear log de eliminación de SINPA
+            create_history_log(db, schemas.HistoryLogCreate(
+                stay_id=stay_id,
+                action="SINPA eliminado manualmente",
+                details={
+                    "reason": "Ha vuelto con las orejas gachas",
+                    "debt_cleared": total_debt_cleared,
+                    "removed_by": user_id,
+                    "entries_removed": len(blacklist_entries)
+                }
+            ), user_id)
+    
+    # ============================================================================
+    # CHECK-IN NORMAL
+    # ============================================================================
+    
     # Update stay
     stay.parking_spot_id = spot.id
     stay.status = models.StayStatus.ACTIVE
@@ -98,7 +137,8 @@ def check_in_stay(db: Session, stay_id: int, spot_type: models.SpotType, user_id
     # Create history log
     log_details = {
         "spot_type": spot_type.value,
-        "spot_number": spot.spot_number
+        "spot_number": spot.spot_number,
+        "sinpa_removed": remove_sinpa
     }
     create_history_log(db, schemas.HistoryLogCreate(
         stay_id=stay_id,
@@ -191,7 +231,13 @@ def discard_stay(db: Session, stay_id: int, reason: str, user_id: int):
     db.refresh(stay)
     return stay
 
-def create_manual_stay(db: Session, stay_data: dict, user_id: int):
+def create_manual_stay(db: Session, stay_data: dict, user_id: int, remove_sinpa: bool = False):
+    """
+    Crear entrada manual.
+    
+    Args:
+        remove_sinpa: Si True, elimina el vehículo de lista negra (SINPA fue un error)
+    """
     # Check if vehicle exists, create if not
     vehicle = get_vehicle_by_license_plate(db, stay_data["license_plate"])
     if not vehicle:
@@ -211,6 +257,30 @@ def create_manual_stay(db: Session, stay_data: dict, user_id: int):
         db.commit()
         db.refresh(vehicle)
     
+    # ============================================================================
+    # ELIMINAR SINPA SI SE SOLICITA
+    # ============================================================================
+    if remove_sinpa:
+        # Buscar entradas en blacklist para este vehículo
+        blacklist_entries = db.query(models.Blacklist).filter(
+            models.Blacklist.vehicle_id == vehicle.id,
+            models.Blacklist.resolved == False
+        ).all()
+        
+        if blacklist_entries:
+            total_debt_cleared = sum(entry.amount_owed for entry in blacklist_entries)
+            
+            # Eliminar todas las entradas de lista negra
+            for entry in blacklist_entries:
+                db.delete(entry)
+            
+            # Log temporal (se creará otro más adelante con el stay_id)
+            print(f"✓ SINPA eliminado manualmente para {vehicle.license_plate} - Deuda liberada: {total_debt_cleared}€")
+    
+    # ============================================================================
+    # CREAR ENTRADA MANUAL
+    # ============================================================================
+    
     # Find an available parking spot of the specified type
     spot = db.query(models.ParkingSpot).filter(
         and_(
@@ -222,7 +292,7 @@ def create_manual_stay(db: Session, stay_data: dict, user_id: int):
     if not spot:
         return None
     
-    # ← NUEVO: Usar check_in_time proporcionado o NOW por defecto
+    # Usar check_in_time proporcionado o NOW por defecto
     check_in_time = stay_data.get("check_in_time")
     if not check_in_time:
         check_in_time = datetime.now(ZoneInfo("Europe/Madrid"))
@@ -232,8 +302,8 @@ def create_manual_stay(db: Session, stay_data: dict, user_id: int):
         vehicle_id=vehicle.id,
         parking_spot_id=spot.id,
         status=models.StayStatus.ACTIVE,
-        check_in_time=check_in_time,  # ← USAR VARIABLE
-        detection_time=check_in_time,  # ← USAR MISMA FECHA (coherencia)
+        check_in_time=check_in_time,
+        detection_time=check_in_time,
         user_id=user_id
     )
     
@@ -249,13 +319,35 @@ def create_manual_stay(db: Session, stay_data: dict, user_id: int):
         "spot_type": stay_data["spot_type"].value if isinstance(stay_data["spot_type"], models.SpotType) else stay_data["spot_type"],
         "spot_number": spot.spot_number,
         "manual_entry": True,
-        "check_in_time": check_in_time.isoformat()  # ← AÑADIR al log
+        "check_in_time": check_in_time.isoformat(),
+        "sinpa_removed": remove_sinpa
     }
+    
     create_history_log(db, schemas.HistoryLogCreate(
         stay_id=db_stay.id,
         action="Manual entry created",
         details=log_details
     ), user_id)
+    
+    # Si se eliminó SINPA, crear log adicional
+    if remove_sinpa:
+        blacklist_entries = db.query(models.Blacklist).filter(
+            models.Blacklist.vehicle_id == vehicle.id,
+            models.Blacklist.resolved == False
+        ).all()
+        
+        # Calcular deuda que se eliminó (antes de eliminar)
+        total_debt_cleared = sum(entry.amount_owed for entry in blacklist_entries) if blacklist_entries else 0
+        
+        create_history_log(db, schemas.HistoryLogCreate(
+            stay_id=db_stay.id,
+            action="SINPA eliminado manualmente",
+            details={
+                "reason": "Ha vuelto con las orejas gachas",
+                "debt_cleared": total_debt_cleared,
+                "removed_by": user_id
+            }
+        ), user_id)
     
     return db_stay
 
@@ -646,7 +738,9 @@ def get_all_blacklist(db: Session, resolved: bool = False):
     Obtiene todas las entradas de la lista negra.
     Por defecto solo muestra las no resueltas.
     """
-    query = db.query(models.Blacklist)
+    from sqlalchemy.orm import joinedload
+    
+    query = db.query(models.Blacklist).options(joinedload(models.Blacklist.vehicle))
     
     if not resolved:
         query = query.filter(models.Blacklist.resolved == False)
@@ -654,26 +748,76 @@ def get_all_blacklist(db: Session, resolved: bool = False):
     return query.order_by(models.Blacklist.incident_date.desc()).all()
 
 
-def resolve_blacklist_entry(db: Session, blacklist_id: int, user_id: int):
+def resolve_blacklist_entry(db: Session, blacklist_id: int, user_id: int, paid: bool = False, payment_method: str = None, notes: str = None):
     """
-    Marca una entrada de lista negra como resuelta (cliente pagó).
+    Marca una entrada de lista negra como resuelta.
+    
+    Args:
+        paid: Si True, registra el pago en caja activa
+        payment_method: 'cash', 'card', o 'transfer' (requerido si paid=True)
+        notes: Notas adicionales
     """
     entry = db.query(models.Blacklist).filter(models.Blacklist.id == blacklist_id).first()
     
     if not entry:
         return None
     
+    # Marcar como resuelto
     entry.resolved = True
+    entry.resolved_at = datetime.now(ZoneInfo("Europe/Madrid"))
+    entry.resolved_by_user_id = user_id
     
-    # Registrar en historial del stay relacionado
+    # ============================================================================
+    # SI PAGÓ: REGISTRAR EN CAJA
+    # ============================================================================
+    if paid:
+        # Verificar que hay caja abierta
+        active_session = db.query(models.CashSession).filter(
+            models.CashSession.status == models.CashSessionStatus.OPEN
+        ).first()
+        
+        if not active_session:
+            raise ValueError("No hay caja abierta. Abre la caja antes de registrar pagos.")
+        
+        # Convertir payment_method string a enum
+        try:
+            payment_method_enum = models.PaymentMethod(payment_method)
+        except ValueError:
+            raise ValueError(f"Método de pago inválido: {payment_method}")
+        
+        # Registrar transacción en caja
+        transaction = models.CashTransaction(
+            cash_session_id=active_session.id,
+            transaction_type=models.TransactionType.PRODUCT_SALE,
+            stay_id=entry.stay_id,
+            amount_due=entry.amount_owed,
+            amount_paid=entry.amount_owed,
+            change_given=0,
+            payment_method=payment_method_enum,
+            user_id=user_id,
+            timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
+            notes=f"Pago de deuda SINPA - {entry.vehicle.license_plate} - {notes if notes else 'Deuda saldada'}"
+        )
+        db.add(transaction)
+    
+    # ============================================================================
+    # REGISTRAR EN HISTORIAL
+    # ============================================================================
     if entry.stay_id:
+        action_text = "SINPA eliminado manualmente - Deuda pagada" if paid else "SINPA eliminado manualmente - Perdonado"
+        
         log_details = {
             "blacklist_id": blacklist_id,
-            "resolved_date": datetime.now(ZoneInfo("Europe/Madrid")).isoformat()
+            "resolved_date": datetime.now(ZoneInfo("Europe/Madrid")).isoformat(),
+            "paid": paid,
+            "amount": entry.amount_owed,
+            "payment_method": payment_method if paid else None,
+            "notes": notes
         }
+        
         create_history_log(db, schemas.HistoryLogCreate(
             stay_id=entry.stay_id,
-            action="Blacklist entry resolved - Debt paid",
+            action=action_text,
             details=log_details
         ), user_id)
     
