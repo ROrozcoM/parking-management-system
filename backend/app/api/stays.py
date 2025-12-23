@@ -839,6 +839,7 @@ async def confirm_pending_transfer(
 async def mark_pending_transfer_as_sinpa(
     transfer_id: int,
     notes: Optional[str] = None,
+    assigned_to_user_id: Optional[int] = None,  # ← NUEVO PARÁMETRO
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_active_user)
 ):
@@ -847,6 +848,9 @@ async def mark_pending_transfer_as_sinpa(
     - Elimina la transferencia pendiente
     - Marca el stay como SINPA
     - Añade vehículo a lista negra
+    
+    assigned_to_user_id: Usuario al que se asigna el SINPA.
+                         Si no se proporciona, se usa el created_by de la transferencia.
     """
     # Obtener transferencia pendiente
     pending = db.query(models.PendingTransfer).filter(
@@ -862,31 +866,26 @@ async def mark_pending_transfer_as_sinpa(
     if not stay:
         raise HTTPException(status_code=404, detail="Stay asociado no encontrado")
     
+    # Determinar usuario al que se asigna el SINPA
+    if assigned_to_user_id is None:
+        # Por defecto: usuario que creó la transferencia pendiente
+        target_user_id = pending.created_by_user_id
+    else:
+        # Verificar que el usuario asignado existe
+        target_user = db.query(models.User).filter(models.User.id == assigned_to_user_id).first()
+        if not target_user:
+            raise HTTPException(status_code=404, detail="Usuario asignado no encontrado")
+        target_user_id = assigned_to_user_id
+    
     # Marcar stay como SINPA usando la función existente
     sinpa_notes = f"Transferencia nunca recibida. {notes if notes else ''}"
-    result = crud.mark_stay_as_sinpa(db, stay.id, sinpa_notes, current_user.id)
+    result = crud.mark_stay_as_sinpa(db, stay.id, sinpa_notes, target_user_id)  # ← USER_ID CORRECTO
     
     if not result:
         raise HTTPException(status_code=500, detail="Error al marcar como SINPA")
     
-    # Marcar la transferencia como "confirmada" con importe 0 (para histórico)
-    # O eliminarla directamente
+    # Eliminar la transferencia pendiente
     db.delete(pending)
-    
-    # Log adicional
-    history_log = models.HistoryLog(
-        stay_id=stay.id,
-        action="Transferencia pendiente → SINPA",
-        timestamp=datetime.now(ZoneInfo("Europe/Madrid")),
-        details={
-            "original_amount": pending.amount,
-            "transaction_type": pending.transaction_type.value,
-            "marked_by": current_user.username,
-            "reason": "Transferencia nunca recibida"
-        },
-        user_id=current_user.id
-    )
-    db.add(history_log)
     
     db.commit()
     
@@ -895,5 +894,6 @@ async def mark_pending_transfer_as_sinpa(
         "message": "Transferencia marcada como SINPA. Vehículo añadido a lista negra.",
         "license_plate": stay.vehicle.license_plate,
         "amount_owed": pending.amount,
-        "blacklist_entry_id": result["blacklist_entry"].id
+        "blacklist_entry_id": result["blacklist_entry"].id,
+        "assigned_to_user": db.query(models.User).get(target_user_id).username
     }

@@ -15,6 +15,8 @@ function PendingTransfersCard({ refreshData }) {
   // Modal de SINPA
   const [showSinpaModal, setShowSinpaModal] = useState(false);
   const [sinpaNotes, setSinpaNotes] = useState('');
+  const [assignedUserId, setAssignedUserId] = useState(null);
+  const [availableUsers, setAvailableUsers] = useState([]);
 
   useEffect(() => {
     fetchPendingTransfers();
@@ -47,9 +49,32 @@ function PendingTransfersCard({ refreshData }) {
     setShowConfirmModal(true);
   };
 
-  const handleSinpaClick = (transfer) => {
+  const handleSinpaClick = async (transfer) => {
     setSelectedTransfer(transfer);
     setSinpaNotes('');
+    
+    // Cargar lista de usuarios disponibles
+    try {
+      const response = await fetch('/api/users', {
+        headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+      
+      if (response.ok) {
+        const users = await response.json();
+        setAvailableUsers(users);
+        
+        // Por defecto: usuario que registró la transferencia
+        setAssignedUserId(transfer.created_by_user_id);
+      }
+    } catch (err) {
+      console.error('Error loading users:', err);
+      // Si falla, al menos permitir continuar sin selector
+      setAvailableUsers([]);
+      setAssignedUserId(null);
+    }
+    
     setShowSinpaModal(true);
   };
 
@@ -93,13 +118,19 @@ function PendingTransfersCard({ refreshData }) {
     setError(null);
 
     try {
-      const notesParam = sinpaNotes ? `?notes=${encodeURIComponent(sinpaNotes)}` : '';
-      const response = await fetch(`/api/stays/pending-transfers/${selectedTransfer.id}/mark-sinpa${notesParam}`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('token')}`
+      const params = new URLSearchParams();
+      if (sinpaNotes) params.append('notes', sinpaNotes);
+      if (assignedUserId) params.append('assigned_to_user_id', assignedUserId);
+      
+      const response = await fetch(
+        `/api/stays/pending-transfers/${selectedTransfer.id}/mark-sinpa?${params}`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
         }
-      });
+      );
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -112,6 +143,7 @@ function PendingTransfersCard({ refreshData }) {
       setShowSinpaModal(false);
       setSelectedTransfer(null);
       setSinpaNotes('');
+      setAssignedUserId(null);
       fetchPendingTransfers();
       if (refreshData) refreshData();
 
@@ -372,6 +404,27 @@ function PendingTransfersCard({ refreshData }) {
                 </div>
               </div>
 
+              {/* NUEVO: Selector de usuario para asignar SINPA */}
+              {availableUsers.length > 0 && (
+                <Form.Group className="mb-3">
+                  <Form.Label><strong>Asignar SINPA a:</strong></Form.Label>
+                  <Form.Select
+                    value={assignedUserId || ''}
+                    onChange={(e) => setAssignedUserId(parseInt(e.target.value))}
+                  >
+                    {availableUsers.map(user => (
+                      <option key={user.id} value={user.id}>
+                        {user.username}
+                        {user.id === selectedTransfer.created_by_user_id && ' (Registró la transferencia) ⭐'}
+                      </option>
+                    ))}
+                  </Form.Select>
+                  <Form.Text className="text-muted">
+                    Por defecto se asigna al usuario que registró la transferencia pendiente.
+                  </Form.Text>
+                </Form.Group>
+              )}
+
               <Form.Group className="mb-3">
                 <Form.Label><strong>Notas (opcional):</strong></Form.Label>
                 <Form.Control
@@ -390,6 +443,7 @@ function PendingTransfersCard({ refreshData }) {
                   ✓ Marcará el vehículo como SINPA<br />
                   ✓ Añadirá a lista negra automáticamente<br />
                   ✓ Registrará como deuda en el sistema<br />
+                  ✓ Se asignará al usuario seleccionado arriba<br />
                   ⚠️ NO se puede deshacer
                 </small>
               </Alert>
