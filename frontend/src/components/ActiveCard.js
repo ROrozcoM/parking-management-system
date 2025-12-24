@@ -23,34 +23,96 @@ function ActiveCard({ refreshData }) {
   const [showCheckoutsDueModal, setShowCheckoutsDueModal] = useState(false);
   const [loadingCheckoutsDue, setLoadingCheckoutsDue] = useState(false);
 
-  // ← NUEVOS: Estados para eliminar estancia activa
+  // Estados para eliminar estancia activa
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [stayToDelete, setStayToDelete] = useState(null);
   const [confirmLicensePlate, setConfirmLicensePlate] = useState('');
   const [deleteError, setDeleteError] = useState('');
 
+  // ← NUEVOS: Estados para verificación de ronda nocturna
+  const [verifiedStayIds, setVerifiedStayIds] = useState([]);
+  const [showResetModal, setShowResetModal] = useState(false);
+
   useEffect(() => {
     fetchActiveStays();
     fetchCheckoutsDueToday();
+    loadVerifiedStays();
   }, []);
 
   useEffect(() => {
-    if (searchQuery.trim() === '') {
-      setFilteredStays(activeStays);
-    } else {
-      const filtered = activeStays.filter(stay =>
+    // Filtrar y ordenar: no verificadas primero, verificadas al final
+    let stays = activeStays;
+    
+    if (searchQuery.trim() !== '') {
+      stays = stays.filter(stay =>
         stay.vehicle.license_plate.toLowerCase().includes(searchQuery.toLowerCase())
       );
-      setFilteredStays(filtered);
     }
-  }, [searchQuery, activeStays]);
+
+    // Ordenar: no verificadas primero, verificadas al final
+    const sorted = [...stays].sort((a, b) => {
+      const aVerified = verifiedStayIds.includes(a.id);
+      const bVerified = verifiedStayIds.includes(b.id);
+      
+      if (aVerified && !bVerified) return 1;  // a al final
+      if (!aVerified && bVerified) return -1; // b al final
+      return 0; // mantener orden original
+    });
+
+    setFilteredStays(sorted);
+  }, [searchQuery, activeStays, verifiedStayIds]);
+
+  // ← NUEVO: Cargar verificaciones desde localStorage
+  const loadVerifiedStays = () => {
+    try {
+      const saved = localStorage.getItem('verifiedStays');
+      if (saved) {
+        setVerifiedStayIds(JSON.parse(saved));
+      }
+    } catch (err) {
+      console.error('Error loading verified stays:', err);
+    }
+  };
+
+  // ← NUEVO: Guardar verificaciones en localStorage
+  const saveVerifiedStays = (ids) => {
+    try {
+      localStorage.setItem('verifiedStays', JSON.stringify(ids));
+    } catch (err) {
+      console.error('Error saving verified stays:', err);
+    }
+  };
+
+  // ← NUEVO: Toggle verificación
+  const handleToggleVerified = (stayId, event) => {
+    event.stopPropagation(); // Evitar que se propague el click
+    
+    setVerifiedStayIds(prev => {
+      let newIds;
+      if (prev.includes(stayId)) {
+        // Desmarcar
+        newIds = prev.filter(id => id !== stayId);
+      } else {
+        // Marcar
+        newIds = [...prev, stayId];
+      }
+      saveVerifiedStays(newIds);
+      return newIds;
+    });
+  };
+
+  // ← NUEVO: Resetear todas las verificaciones
+  const handleResetVerifications = () => {
+    setVerifiedStayIds([]);
+    saveVerifiedStays([]);
+    setShowResetModal(false);
+  };
 
   const fetchActiveStays = async () => {
     try {
       setLoading(true);
       const data = await staysAPI.getActiveStays();
       setActiveStays(data);
-      setFilteredStays(data);
       setError(null);
     } catch (err) {
       setError('Failed to fetch active stays');
@@ -107,7 +169,6 @@ function ActiveCard({ refreshData }) {
     setShowCheckOutModal(true);
   };
 
-  // ← NUEVO: Manejar click en eliminar
   const handleDeleteClick = (stay) => {
     setStayToDelete(stay);
     setConfirmLicensePlate('');
@@ -115,11 +176,9 @@ function ActiveCard({ refreshData }) {
     setShowDeleteModal(true);
   };
 
-  // ← NUEVO: Confirmar eliminación
   const handleConfirmDelete = async () => {
     if (!stayToDelete) return;
 
-    // Validar que la matrícula coincida
     if (confirmLicensePlate.trim().toUpperCase() !== stayToDelete.vehicle.license_plate.toUpperCase()) {
       setDeleteError('La matrícula no coincide. Por favor, verifica e inténtalo de nuevo.');
       return;
@@ -139,7 +198,6 @@ function ActiveCard({ refreshData }) {
         throw new Error(errorData.detail || 'Error eliminando estancia');
       }
 
-      // Éxito
       setShowDeleteModal(false);
       setStayToDelete(null);
       setConfirmLicensePlate('');
@@ -223,6 +281,9 @@ function ActiveCard({ refreshData }) {
   if (loading) return <div className="loading">Loading active stays...</div>;
   if (error) return <div className="error">{error}</div>;
 
+  const verifiedCount = verifiedStayIds.length;
+  const totalCount = activeStays.length;
+
   return (
     <div className="card">
       <div className="card-header">
@@ -231,10 +292,10 @@ function ActiveCard({ refreshData }) {
         <div style={{ 
           display: 'flex', 
           alignItems: 'center', 
-          gap: '1rem',
+          gap: '0.5rem',
           flex: 1,
           justifyContent: 'center',
-          maxWidth: '400px',
+          maxWidth: '500px',
           margin: '0 auto'
         }}>
           <div style={{ position: 'relative', flex: 1 }}>
@@ -275,6 +336,42 @@ function ActiveCard({ refreshData }) {
               </button>
             )}
           </div>
+
+          {/* ← NUEVO: Contador de verificadas */}
+          {verifiedCount > 0 && (
+            <div style={{
+              fontSize: '0.85rem',
+              color: '#666',
+              whiteSpace: 'nowrap',
+              padding: '0.25rem 0.5rem',
+              backgroundColor: '#e8f5e9',
+              borderRadius: '4px',
+              fontWeight: 600
+            }}>
+              ✓ {verifiedCount}/{totalCount}
+            </div>
+          )}
+
+          {/* ← NUEVO: Botón reset verificaciones */}
+          <button
+            onClick={() => setShowResetModal(true)}
+            disabled={verifiedCount === 0}
+            style={{
+              padding: '0.5rem',
+              background: verifiedCount > 0 ? '#f0f0f0' : '#e0e0e0',
+              border: '1px solid #ccc',
+              borderRadius: '6px',
+              cursor: verifiedCount > 0 ? 'pointer' : 'not-allowed',
+              fontSize: '1rem',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              opacity: verifiedCount > 0 ? 1 : 0.5
+            }}
+            title="Resetear verificación de ronda"
+          >
+            🔄
+          </button>
         </div>
         
         <button 
@@ -363,9 +460,43 @@ function ActiveCard({ refreshData }) {
           <div className="stay-list">
             {filteredStays.map(stay => {
               const nights = calculateNights(stay.check_in_time, stay.check_out_time);
+              const isVerified = verifiedStayIds.includes(stay.id);
               
               return (
-                <div key={stay.id} className="stay-item">
+                <div 
+                  key={stay.id} 
+                  className="stay-item"
+                  style={{
+                    opacity: isVerified ? 0.6 : 1,
+                    position: 'relative'
+                  }}
+                >
+                  {/* ← NUEVO: Checkbox de verificación */}
+                  <div
+                    onClick={(e) => handleToggleVerified(stay.id, e)}
+                    style={{
+                      position: 'absolute',
+                      top: '0.5rem',
+                      right: '0.5rem',
+                      width: '20px',
+                      height: '20px',
+                      border: '2px solid #4CAF50',
+                      borderRadius: '4px',
+                      backgroundColor: isVerified ? '#4CAF50' : 'white',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      zIndex: 10,
+                      transition: 'all 0.2s'
+                    }}
+                    title={isVerified ? 'Verificado - Click para desmarcar' : 'Click para verificar'}
+                  >
+                    {isVerified && (
+                      <span style={{ color: 'white', fontSize: '14px', fontWeight: 'bold' }}>✓</span>
+                    )}
+                  </div>
+
                   <div className="stay-info">
                     <div className="d-flex justify-content-between align-items-start mb-2">
                       <div className="license-plate">{stay.vehicle.license_plate}</div>
@@ -413,7 +544,6 @@ function ActiveCard({ refreshData }) {
                             💳 Pagar por Adelantado
                           </button>
                           
-                          {/* ← NUEVO: Botón eliminar (solo si pending) */}
                           <button 
                             className="btn btn-outline-secondary btn-sm"
                             onClick={() => handleDeleteClick(stay)}
@@ -563,7 +693,7 @@ function ActiveCard({ refreshData }) {
         </Modal.Footer>
       </Modal>
 
-      {/* ← NUEVO: Modal de confirmación para eliminar */}
+      {/* Modal de confirmación para eliminar estancia */}
       <Modal 
         show={showDeleteModal} 
         onHide={() => {
@@ -653,6 +783,32 @@ function ActiveCard({ refreshData }) {
             disabled={!confirmLicensePlate.trim()}
           >
             🗑️ Eliminar Estancia
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ← NUEVO: Modal de confirmación para resetear verificaciones */}
+      <Modal 
+        show={showResetModal} 
+        onHide={() => setShowResetModal(false)}
+        centered
+        size="sm"
+      >
+        <Modal.Header closeButton>
+          <Modal.Title>🔄 Resetear Verificación</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <p>¿Deseas resetear todas las verificaciones de ronda?</p>
+          <p className="text-muted small mb-0">
+            Se desmarcarán todas las caravanas verificadas ({verifiedCount} actualmente).
+          </p>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowResetModal(false)}>
+            Cancelar
+          </Button>
+          <Button variant="primary" onClick={handleResetVerifications}>
+            🔄 Resetear
           </Button>
         </Modal.Footer>
       </Modal>
