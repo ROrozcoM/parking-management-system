@@ -153,12 +153,23 @@ def print_ticket(ticket_type: str, license_plate: str, check_in_time: str,
         if ticket_type == 'open_exit':
             ticket += b'--------------------------------\n\n'
             ticket += ALIGN_CENTER + BOLD_ON
-            ticket += b'Por favor, abone su cuenta\n'
-            ticket += b'el dia anterior a su salida\n\n'
-            ticket += b'Please settle your account\n'
-            ticket += b'the day before your departure\n\n'
-            ticket += b'Si prefiere hacer transferencia bancaria:\n'
-            ticket += b'IBAN: ES62 0182 2104 4902 0167 9208\n\n'
+            ticket += b'ABONE SU CUENTA EL DIA ANTERIOR\n'
+            ticket += b'A SU SALIDA:\n\n'
+            ticket += BOLD_OFF
+            ticket += b'- Efectivo: Dejar en el buzon\n'
+            ticket += b'- Transferencia bancaria:\n'
+            ticket += BOLD_ON
+            ticket += b'ES62 0182 2104 4902 0167 9208\n\n'
+            ticket += BOLD_OFF
+            ticket += b'--------------------------------\n\n'
+            ticket += BOLD_ON
+            ticket += b'SETTLE YOUR ACCOUNT THE DAY\n'
+            ticket += b'BEFORE YOUR DEPARTURE:\n\n'
+            ticket += BOLD_OFF
+            ticket += b'- Cash: Leave in mailbox\n'
+            ticket += b'- Bank transfer:\n'
+            ticket += BOLD_ON
+            ticket += b'ES62 0182 2104 4902 0167 9208\n\n'
             ticket += BOLD_OFF
         else:
             if ticket_type in ['checkout', 'extension'] and exit_formatted:
@@ -166,6 +177,16 @@ def print_ticket(ticket_type: str, license_plate: str, check_in_time: str,
                 ticket += exit_formatted.encode('utf-8') + b'\n'
                 ticket += BOLD_ON + b'DURACION:        ' + BOLD_OFF
                 ticket += f'{nights} noches\n'.encode('utf-8')
+            
+            # ← NUEVO: DESTACAR FECHA DE SALIDA en prepago y extensión
+            if ticket_type in ['prepayment', 'extension'] and exit_formatted:
+                ticket += b'\n'
+                ticket += ALIGN_CENTER
+                ticket += DOUBLE_BOTH + BOLD_ON
+                ticket += b'SALIDA PREVISTA:\n'
+                ticket += exit_formatted.encode('utf-8') + b'\n'
+                ticket += NORMAL + BOLD_OFF
+                ticket += ALIGN_LEFT
             
             ticket += b'--------------------------------\n\n'
         
@@ -185,6 +206,13 @@ def print_ticket(ticket_type: str, license_plate: str, check_in_time: str,
             ticket += NORMAL + BOLD_OFF
             ticket += b'(IVA incluido)\n'
             ticket += b'================================\n\n'
+            
+            # ← NUEVO: CUENTA BANCARIA en prepago y extensión
+            if ticket_type in ['prepayment', 'extension']:
+                ticket += BOLD_ON + b'CUENTA BANCARIA:\n' + BOLD_OFF
+                ticket += b'ES62 0182 2104 4902 0167 9208\n'
+                ticket += b'(Para transferencias futuras)\n'
+                ticket += b'================================\n\n'
         else:
             ticket += ALIGN_CENTER + b'================================\n\n'
         
