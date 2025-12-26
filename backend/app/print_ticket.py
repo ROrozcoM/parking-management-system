@@ -209,9 +209,8 @@ def print_ticket(ticket_type: str, license_plate: str, check_in_time: str,
             
             # ← NUEVO: CUENTA BANCARIA en prepago y extensión
             if ticket_type in ['prepayment', 'extension']:
-                ticket += BOLD_ON + b'CUENTA BANCARIA:\n' + BOLD_OFF
+                ticket += BOLD_ON + b'CUENTA BANCARIA / BANK ACCOUNT:\n' + BOLD_OFF
                 ticket += b'ES62 0182 2104 4902 0167 9208\n'
-                ticket += b'(Para transferencias futuras)\n'
                 ticket += b'================================\n\n'
         else:
             ticket += ALIGN_CENTER + b'================================\n\n'
