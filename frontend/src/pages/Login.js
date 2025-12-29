@@ -36,7 +36,7 @@ function Login() {
   return (
     <div className="login-container">
       <div className="login-form">
-        <h1 className="text-center">🚐 Parking Manager</h1>
+        <h1 className="text-center">Camper Park Medina Azahara</h1>
         <h2 className="text-center">Login</h2>
         
         <form onSubmit={handleSubmit}>

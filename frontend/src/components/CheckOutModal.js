@@ -25,6 +25,12 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
   const [showVisitorModal, setShowVisitorModal] = useState(false);
   const [visitorLoading, setVisitorLoading] = useState(false);
 
+  // ← NUEVO: Estados para modal de validación de decimales
+  const [showRoundModal, setShowRoundModal] = useState(false);
+  const [detectedPrice, setDetectedPrice] = useState(0);
+  const [roundedPrice, setRoundedPrice] = useState(0);
+  const [pendingSubmit, setPendingSubmit] = useState(null);
+
   // Función para obtener precio por noche según tipo de plaza
   const getPricePerNight = (spotType) => {
     const prices = {
@@ -156,9 +162,25 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
       return;
     }
 
+    // ← NUEVO: Validar decimales
+    const numValue = parseFloat(finalPrice);
+    if (numValue % 1 !== 0) {
+      // Tiene decimales - mostrar modal
+      setDetectedPrice(numValue);
+      setRoundedPrice(Math.round(numValue));
+      setPendingSubmit(e);
+      setShowRoundModal(true);
+      return;
+    }
+
+    // Si no tiene decimales, proceder directamente
+    await executeCheckout(numValue);
+  };
+
+  // ← NUEVO: Función para ejecutar el checkout con el precio validado
+  const executeCheckout = async (priceToUse) => {
     setLoading(true);
     setError(null);
-    
 
     try {
       const response = await fetch(`/api/stays/${stay.id}/check-out`, {
@@ -168,7 +190,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          final_price: parseFloat(finalPrice),
+          final_price: priceToUse,
           payment_method: paymentMethod,
           check_in_time: new Date(checkInTime).toISOString(),
           check_out_time: new Date(checkOutTime).toISOString()
@@ -189,6 +211,27 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  // ← NUEVO: Handlers para el modal de redondeo
+  const handleRoundPrice = () => {
+    setFinalPrice(roundedPrice.toString());
+    setShowRoundModal(false);
+    setPendingSubmit(null);
+    // Ejecutar checkout con precio redondeado
+    executeCheckout(roundedPrice);
+  };
+
+  const handleKeepPrice = () => {
+    setShowRoundModal(false);
+    setPendingSubmit(null);
+    // Ejecutar checkout con precio original
+    executeCheckout(detectedPrice);
+  };
+
+  const handleCancelRound = () => {
+    setShowRoundModal(false);
+    setPendingSubmit(null);
   };
 
   const handleSinpaClick = () => {
@@ -271,6 +314,8 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
     setShowSinpaModal(false);
     setShowVisitorModal(false);
     setShowTicketTypeModal(false);
+    setShowRoundModal(false);
+    setPendingSubmit(null);
     onHide();
   };
 
@@ -369,6 +414,7 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
                     placeholder="Ej: 15.00"
                     value={finalPrice}
                     onChange={(e) => setFinalPrice(e.target.value)}
+                    onWheel={(e) => e.target.blur()}
                     required
                     disabled={loading || printing}
                   />
@@ -479,6 +525,30 @@ function CheckOutModal({ show, onHide, stay, onSuccess }) {
         onHide={() => setShowTicketTypeModal(false)}
         onSelectType={handleTicketTypeSelected}
       />
+
+      {/* ← NUEVO: Modal de validación de decimales */}
+      <Modal show={showRoundModal} onHide={handleCancelRound} centered size="sm">
+        <Modal.Header closeButton style={{ backgroundColor: '#fff3cd', borderBottom: '2px solid #ffc107' }}>
+          <Modal.Title>⚠️ Precio con decimales</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Alert variant="warning" className="mb-3">
+            Has introducido: <strong className="h5">{detectedPrice.toFixed(2)}€</strong>
+          </Alert>
+          <p className="mb-0"><strong>¿Qué deseas hacer?</strong></p>
+        </Modal.Body>
+        <Modal.Footer style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+          <Button variant="secondary" onClick={handleCancelRound} size="sm">
+            Cancelar
+          </Button>
+          <Button variant="warning" onClick={handleKeepPrice} size="sm">
+            Mantener {detectedPrice.toFixed(2)}€
+          </Button>
+          <Button variant="success" onClick={handleRoundPrice} size="sm">
+            Redondear a {roundedPrice}€
+          </Button>
+        </Modal.Footer>
+      </Modal>
 
       {/* Modal de confirmación de SINPA */}
       <Modal show={showSinpaModal} onHide={() => setShowSinpaModal(false)} centered>

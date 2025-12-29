@@ -12,6 +12,12 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
   const [newCheckoutDate, setNewCheckoutDate] = useState('');
   const [currentNights, setCurrentNights] = useState(0);
 
+  // ← NUEVO: Estados para modal de validación de decimales
+  const [showRoundModal, setShowRoundModal] = useState(false);
+  const [detectedPrice, setDetectedPrice] = useState(0);
+  const [roundedPrice, setRoundedPrice] = useState(0);
+  const [pendingSubmit, setPendingSubmit] = useState(null);
+
   // Función para obtener precio por noche según tipo de plaza
   const getPricePerNight = (spotType) => {
     const prices = {
@@ -100,7 +106,7 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
     }
   };
 
-const handleSubmit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!nightsToAdd || nightsToAdd <= 0) {
@@ -113,6 +119,23 @@ const handleSubmit = async (e) => {
       return;
     }
 
+    // ← NUEVO: Validar decimales
+    const numValue = parseFloat(additionalAmount);
+    if (numValue % 1 !== 0) {
+      // Tiene decimales - mostrar modal
+      setDetectedPrice(numValue);
+      setRoundedPrice(Math.round(numValue));
+      setPendingSubmit(e);
+      setShowRoundModal(true);
+      return;
+    }
+
+    // Si no tiene decimales, proceder directamente
+    await executeExtension(numValue);
+  };
+
+  // ← NUEVO: Función para ejecutar la extensión con el precio validado
+  const executeExtension = async (priceToUse) => {
     setLoading(true);
     setError(null);
 
@@ -125,7 +148,7 @@ const handleSubmit = async (e) => {
         },
         body: JSON.stringify({
           nights_to_add: parseInt(nightsToAdd),
-          additional_amount: parseFloat(additionalAmount),
+          additional_amount: priceToUse,
           payment_method: paymentMethod
         })
       });
@@ -157,12 +180,35 @@ const handleSubmit = async (e) => {
     }
   };
 
+  // ← NUEVO: Handlers para el modal de redondeo
+  const handleRoundPrice = () => {
+    setAdditionalAmount(roundedPrice.toString());
+    setShowRoundModal(false);
+    setPendingSubmit(null);
+    // Ejecutar extensión con precio redondeado
+    executeExtension(roundedPrice);
+  };
+
+  const handleKeepPrice = () => {
+    setShowRoundModal(false);
+    setPendingSubmit(null);
+    // Ejecutar extensión con precio original
+    executeExtension(detectedPrice);
+  };
+
+  const handleCancelRound = () => {
+    setShowRoundModal(false);
+    setPendingSubmit(null);
+  };
+
   const handleClose = () => {
     setNightsToAdd(1);
     setAdditionalAmount('');
     setPaymentMethod('cash');
     setError(null);
     setNewCheckoutDate('');
+    setShowRoundModal(false);
+    setPendingSubmit(null);
     onHide();
   };
 
@@ -174,203 +220,230 @@ const handleSubmit = async (e) => {
   const pricePerNight = getPricePerNight(spotType);
 
   return (
-    <Modal show={show} onHide={handleClose} centered size="lg">
-      <Modal.Header closeButton>
-        <Modal.Title>➕ Extender Estancia</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
-        {error && <Alert variant="danger">{error}</Alert>}
+    <>
+      <Modal show={show} onHide={handleClose} centered size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>➕ Extender Estancia</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {error && <Alert variant="danger">{error}</Alert>}
 
-        <Alert variant="info" className="mb-3">
-          <strong>ℹ️ Nota:</strong> Esta extensión se registrará en el historial para trazabilidad de pagos.
-        </Alert>
-
-        <div className="stay-summary mb-4 p-3 bg-light rounded">
-          <h5 className="mb-3">Resumen Actual</h5>
-          
-          <div className="row">
-            <div className="col-md-6">
-              <div className="detail-row mb-2">
-                <strong>Matrícula:</strong>
-                <span className="license-plate-display ms-2">{stay.vehicle.license_plate}</span>
-              </div>
-              <div className="detail-row mb-2">
-                <strong>Plaza:</strong>
-                <span className="ms-2">
-                  {stay.parking_spot 
-                    ? `${stay.parking_spot.spot_type} - ${stay.parking_spot.spot_number}` 
-                    : 'No asignada'}
-                </span>
-              </div>
-              <div className="detail-row mb-2">
-                <strong>Tarifa:</strong>
-                <span className="text-success ms-2">{pricePerNight}€/noche</span>
-              </div>
-              <div className="detail-row mb-2">
-                <strong>Noches actuales:</strong>
-                <span className="ms-2">{currentNights} noche{currentNights !== 1 ? 's' : ''}</span>
-              </div>
-              <div className="detail-row mb-2">
-                <strong>Salida actual:</strong>
-                <span className="ms-2">
-                  {stay.check_out_time 
-                    ? new Date(stay.check_out_time).toLocaleString('es-ES')
-                    : 'No definida'}
-                </span>
-              </div>
-            </div>
-            
-            <div className="col-md-6">
-              <div className="detail-row mb-2">
-                <strong>Pagado actual:</strong>
-                <span className="text-success ms-2 fs-5">{stay.prepaid_amount?.toFixed(2)} €</span>
-              </div>
-              <div className="detail-row mb-2">
-                <strong>Método original:</strong>
-                <span className="ms-2">
-                  {!stay.payment_method || stay.payment_method === 'cash' ? '💵 Efectivo' : 
-                   stay.payment_method === 'card' ? '💳 Tarjeta' : 
-                   stay.payment_method === 'transfer' ? '🏦 Transferencia' : 
-                   '💵 Efectivo'}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <Form onSubmit={handleSubmit}>
-          <h5 className="mb-3">Extensión de Estancia</h5>
-
-          <Form.Group className="mb-3">
-            <Form.Label><strong>Noches a añadir:</strong></Form.Label>
-            <Form.Control
-              type="number"
-              min="1"
-              value={nightsToAdd}
-              onChange={(e) => setNightsToAdd(e.target.value)}
-              disabled={loading || printing}
-              required
-            />
-            <Form.Text className="text-muted">
-              Total noches: {totalNights} ({currentNights} actuales + {nightsToAdd} nuevas)
-            </Form.Text>
-          </Form.Group>
-
-          <Form.Group className="mb-3">
-            <Form.Label><strong>Nueva fecha de salida:</strong></Form.Label>
-            <Form.Control
-              type="text"
-              value={newCheckoutDate}
-              disabled
-              readOnly
-              className="bg-light"
-            />
-          </Form.Group>
-
-          <Form.Group className="mb-3">
-            <Form.Label><strong>Importe adicional (€):</strong></Form.Label>
-            <Form.Control
-              type="number"
-              step="0.01"
-              min="0"
-              value={additionalAmount}
-              onChange={(e) => setAdditionalAmount(e.target.value)}
-              disabled={loading || printing}
-              required
-            />
-            <Form.Text className="text-muted">
-              Precio sugerido: {nightsToAdd} noche{nightsToAdd > 1 ? 's' : ''} × {pricePerNight}€ = {(nightsToAdd * pricePerNight).toFixed(2)}€
-            </Form.Text>
-          </Form.Group>
-
-          <Form.Group className="mb-3">
-            <Form.Label><strong>Método de pago de esta extensión:</strong></Form.Label>
-            <Form.Select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              disabled={loading || printing}
-            >
-              <option value="cash">💵 Efectivo</option>
-              <option value="card">💳 Tarjeta</option>
-              <option value="transfer">🏦 Transferencia</option>
-            </Form.Select>
-            <Form.Text className="text-muted">
-              Se registrará en el historial para trazabilidad
-            </Form.Text>
-          </Form.Group>
-
-          <Alert variant="success" className="mb-3">
-            <h6 className="mb-2">Resumen Final:</h6>
-            <div className="d-flex justify-content-between">
-              <span><strong>Total noches:</strong></span>
-              <span>{totalNights} noche{totalNights !== 1 ? 's' : ''}</span>
-            </div>
-            <div className="d-flex justify-content-between">
-              <span><strong>Total pagado:</strong></span>
-              <span className="fs-5">{totalAmount} €</span>
-            </div>
-            <hr />
-            <small className="text-muted">
-              Métodos: {!stay.payment_method || stay.payment_method === 'cash' ? 'Efectivo' : stay.payment_method === 'card' ? 'Tarjeta' : stay.payment_method === 'transfer' ? 'Transferencia' : 'Efectivo'} ({stay.prepaid_amount?.toFixed(2)}€) + {paymentMethod === 'cash' ? 'Efectivo' : paymentMethod === 'card' ? 'Tarjeta' : 'Transferencia'} ({additionalAmount}€)
-            </small>
+          <Alert variant="info" className="mb-3">
+            <strong>ℹ️ Nota:</strong> Esta extensión se registrará en el historial para trazabilidad de pagos.
           </Alert>
 
-          <div className="d-grid gap-2">
-            {/* Botón de imprimir ticket */}
-            <Button 
-              variant="info" 
-              onClick={handlePrintTicket}
-              disabled={!additionalAmount || parseFloat(additionalAmount) <= 0 || printing || loading}
-            >
-              {printing ? (
-                <>
-                  <Spinner
-                    as="span"
-                    animation="border"
-                    size="sm"
-                    role="status"
-                    aria-hidden="true"
-                    className="me-2"
-                  />
-                  Imprimiendo...
-                </>
-              ) : (
-                <>🖨️ Generar Ticket de Extensión</>
-              )}
-            </Button>
-
-            {/* Botón de confirmar extensión */}
-            <Button 
-              variant="success" 
-              type="submit"
-              disabled={loading || printing}
-              size="lg"
-            >
-              {loading ? (
-                <>
-                  <Spinner
-                    as="span"
-                    animation="border"
-                    size="sm"
-                    role="status"
-                    aria-hidden="true"
-                    className="me-2"
-                  />
-                  Procesando...
-                </>
-              ) : (
-                <>✓ Confirmar Extensión de Estancia</>
-              )}
-            </Button>
+          <div className="stay-summary mb-4 p-3 bg-light rounded">
+            <h5 className="mb-3">Resumen Actual</h5>
+            
+            <div className="row">
+              <div className="col-md-6">
+                <div className="detail-row mb-2">
+                  <strong>Matrícula:</strong>
+                  <span className="license-plate-display ms-2">{stay.vehicle.license_plate}</span>
+                </div>
+                <div className="detail-row mb-2">
+                  <strong>Plaza:</strong>
+                  <span className="ms-2">
+                    {stay.parking_spot 
+                      ? `${stay.parking_spot.spot_type} - ${stay.parking_spot.spot_number}` 
+                      : 'No asignada'}
+                  </span>
+                </div>
+                <div className="detail-row mb-2">
+                  <strong>Tarifa:</strong>
+                  <span className="text-success ms-2">{pricePerNight}€/noche</span>
+                </div>
+                <div className="detail-row mb-2">
+                  <strong>Noches actuales:</strong>
+                  <span className="ms-2">{currentNights} noche{currentNights !== 1 ? 's' : ''}</span>
+                </div>
+                <div className="detail-row mb-2">
+                  <strong>Salida actual:</strong>
+                  <span className="ms-2">
+                    {stay.check_out_time 
+                      ? new Date(stay.check_out_time).toLocaleString('es-ES')
+                      : 'No definida'}
+                  </span>
+                </div>
+              </div>
+              
+              <div className="col-md-6">
+                <div className="detail-row mb-2">
+                  <strong>Pagado actual:</strong>
+                  <span className="text-success ms-2 fs-5">{stay.prepaid_amount?.toFixed(2)} €</span>
+                </div>
+                <div className="detail-row mb-2">
+                  <strong>Método original:</strong>
+                  <span className="ms-2">
+                    {!stay.payment_method || stay.payment_method === 'cash' ? '💵 Efectivo' : 
+                     stay.payment_method === 'card' ? '💳 Tarjeta' : 
+                     stay.payment_method === 'transfer' ? '🏦 Transferencia' : 
+                     '💵 Efectivo'}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
-        </Form>
-      </Modal.Body>
-      <Modal.Footer>
-        <Button variant="secondary" onClick={handleClose} disabled={loading || printing}>
-          Cancelar
-        </Button>
-      </Modal.Footer>
-    </Modal>
+
+          <Form onSubmit={handleSubmit}>
+            <h5 className="mb-3">Extensión de Estancia</h5>
+
+            <Form.Group className="mb-3">
+              <Form.Label><strong>Noches a añadir:</strong></Form.Label>
+              <Form.Control
+                type="number"
+                min="1"
+                value={nightsToAdd}
+                onChange={(e) => setNightsToAdd(e.target.value)}
+                disabled={loading || printing}
+                required
+              />
+              <Form.Text className="text-muted">
+                Total noches: {totalNights} ({currentNights} actuales + {nightsToAdd} nuevas)
+              </Form.Text>
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label><strong>Nueva fecha de salida:</strong></Form.Label>
+              <Form.Control
+                type="text"
+                value={newCheckoutDate}
+                disabled
+                readOnly
+                className="bg-light"
+              />
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label><strong>Importe adicional (€):</strong></Form.Label>
+              <Form.Control
+                type="number"
+                step="0.01"
+                min="0"
+                value={additionalAmount}
+                onChange={(e) => setAdditionalAmount(e.target.value)}
+                onWheel={(e) => e.target.blur()}
+                disabled={loading || printing}
+                required
+              />
+              <Form.Text className="text-muted">
+                Precio sugerido: {nightsToAdd} noche{nightsToAdd > 1 ? 's' : ''} × {pricePerNight}€ = {(nightsToAdd * pricePerNight).toFixed(2)}€
+              </Form.Text>
+            </Form.Group>
+
+            <Form.Group className="mb-3">
+              <Form.Label><strong>Método de pago de esta extensión:</strong></Form.Label>
+              <Form.Select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                disabled={loading || printing}
+              >
+                <option value="cash">💵 Efectivo</option>
+                <option value="card">💳 Tarjeta</option>
+                <option value="transfer">🏦 Transferencia</option>
+              </Form.Select>
+              <Form.Text className="text-muted">
+                Se registrará en el historial para trazabilidad
+              </Form.Text>
+            </Form.Group>
+
+            <Alert variant="success" className="mb-3">
+              <h6 className="mb-2">Resumen Final:</h6>
+              <div className="d-flex justify-content-between">
+                <span><strong>Total noches:</strong></span>
+                <span>{totalNights} noche{totalNights !== 1 ? 's' : ''}</span>
+              </div>
+              <div className="d-flex justify-content-between">
+                <span><strong>Total pagado:</strong></span>
+                <span className="fs-5">{totalAmount} €</span>
+              </div>
+              <hr />
+              <small className="text-muted">
+                Métodos: {!stay.payment_method || stay.payment_method === 'cash' ? 'Efectivo' : stay.payment_method === 'card' ? 'Tarjeta' : stay.payment_method === 'transfer' ? 'Transferencia' : 'Efectivo'} ({stay.prepaid_amount?.toFixed(2)}€) + {paymentMethod === 'cash' ? 'Efectivo' : paymentMethod === 'card' ? 'Tarjeta' : 'Transferencia'} ({additionalAmount}€)
+              </small>
+            </Alert>
+
+            <div className="d-grid gap-2">
+              {/* Botón de imprimir ticket */}
+              <Button 
+                variant="info" 
+                onClick={handlePrintTicket}
+                disabled={!additionalAmount || parseFloat(additionalAmount) <= 0 || printing || loading}
+              >
+                {printing ? (
+                  <>
+                    <Spinner
+                      as="span"
+                      animation="border"
+                      size="sm"
+                      role="status"
+                      aria-hidden="true"
+                      className="me-2"
+                    />
+                    Imprimiendo...
+                  </>
+                ) : (
+                  <>🖨️ Generar Ticket de Extensión</>
+                )}
+              </Button>
+
+              {/* Botón de confirmar extensión */}
+              <Button 
+                variant="success" 
+                type="submit"
+                disabled={loading || printing}
+                size="lg"
+              >
+                {loading ? (
+                  <>
+                    <Spinner
+                      as="span"
+                      animation="border"
+                      size="sm"
+                      role="status"
+                      aria-hidden="true"
+                      className="me-2"
+                    />
+                    Procesando...
+                  </>
+                ) : (
+                  <>✓ Confirmar Extensión de Estancia</>
+                )}
+              </Button>
+            </div>
+          </Form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={handleClose} disabled={loading || printing}>
+            Cancelar
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ← NUEVO: Modal de validación de decimales */}
+      <Modal show={showRoundModal} onHide={handleCancelRound} centered size="sm">
+        <Modal.Header closeButton style={{ backgroundColor: '#fff3cd', borderBottom: '2px solid #ffc107' }}>
+          <Modal.Title>⚠️ Precio con decimales</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Alert variant="warning" className="mb-3">
+            Has introducido: <strong className="h5">{detectedPrice.toFixed(2)}€</strong>
+          </Alert>
+          <p className="mb-0"><strong>¿Qué deseas hacer?</strong></p>
+        </Modal.Body>
+        <Modal.Footer style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+          <Button variant="secondary" onClick={handleCancelRound} size="sm">
+            Cancelar
+          </Button>
+          <Button variant="warning" onClick={handleKeepPrice} size="sm">
+            Mantener {detectedPrice.toFixed(2)}€
+          </Button>
+          <Button variant="success" onClick={handleRoundPrice} size="sm">
+            Redondear a {roundedPrice}€
+          </Button>
+        </Modal.Footer>
+      </Modal>
+    </>
   );
 }
 

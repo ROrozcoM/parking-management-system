@@ -12,6 +12,12 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
   const [error, setError] = useState(null);
   const [nights, setNights] = useState(0);
 
+  // ← NUEVO: Estados para modal de validación de decimales
+  const [showRoundModal, setShowRoundModal] = useState(false);
+  const [detectedPrice, setDetectedPrice] = useState(0);
+  const [roundedPrice, setRoundedPrice] = useState(0);
+  const [pendingSubmit, setPendingSubmit] = useState(null);
+
   // Función para obtener precio por noche según tipo de plaza
   const getPricePerNight = (spotType) => {
     const prices = {
@@ -114,7 +120,7 @@ function PaymentModal({ show, onHide, stay, onSuccess }) {
     }
   };
 
-const handleSubmit = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     
     if (!amount || parseFloat(amount) <= 0) {
@@ -133,6 +139,23 @@ const handleSubmit = async (e) => {
       return;
     }
 
+    // ← NUEVO: Validar decimales
+    const numValue = parseFloat(amount);
+    if (numValue % 1 !== 0) {
+      // Tiene decimales - mostrar modal
+      setDetectedPrice(numValue);
+      setRoundedPrice(Math.round(numValue));
+      setPendingSubmit(e);
+      setShowRoundModal(true);
+      return;
+    }
+
+    // Si no tiene decimales, proceder directamente
+    await executePrepayment(numValue);
+  };
+
+  // ← NUEVO: Función para ejecutar el prepago con el precio validado
+  const executePrepayment = async (priceToUse) => {
     setLoading(true);
     setError(null);
 
@@ -144,7 +167,7 @@ const handleSubmit = async (e) => {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          amount: parseFloat(amount),
+          amount: priceToUse,
           payment_method: paymentMethod,
           check_in_time: new Date(checkInTime).toISOString(),
           check_out_time: new Date(checkOutTime).toISOString()
@@ -178,6 +201,27 @@ const handleSubmit = async (e) => {
     }
   };
 
+  // ← NUEVO: Handlers para el modal de redondeo
+  const handleRoundPrice = () => {
+    setAmount(roundedPrice.toString());
+    setShowRoundModal(false);
+    setPendingSubmit(null);
+    // Ejecutar prepago con precio redondeado
+    executePrepayment(roundedPrice);
+  };
+
+  const handleKeepPrice = () => {
+    setShowRoundModal(false);
+    setPendingSubmit(null);
+    // Ejecutar prepago con precio original
+    executePrepayment(detectedPrice);
+  };
+
+  const handleCancelRound = () => {
+    setShowRoundModal(false);
+    setPendingSubmit(null);
+  };
+
   const handleClose = () => {
     setAmount('');
     setPaymentMethod('cash');
@@ -185,6 +229,8 @@ const handleSubmit = async (e) => {
     setCheckOutTime('');
     setError(null);
     setNights(0);
+    setShowRoundModal(false);
+    setPendingSubmit(null);
     onHide();
   };
 
@@ -194,162 +240,189 @@ const handleSubmit = async (e) => {
   const pricePerNight = getPricePerNight(spotType);
 
   return (
-    <Modal show={show} onHide={handleClose} centered size="lg">
-      <Modal.Header closeButton>
-        <Modal.Title>Pago Adelantado (Check-in automático)</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
-        {error && <Alert variant="danger">{error}</Alert>}
-        
-        <Alert variant="info" className="mb-3">
-          <strong>ℹ️ Importante:</strong> Al hacer un pago adelantado, el vehículo pasará automáticamente a "Activas" con la fecha de salida prevista.
-        </Alert>
+    <>
+      <Modal show={show} onHide={handleClose} centered size="lg">
+        <Modal.Header closeButton>
+          <Modal.Title>Pago Adelantado (Check-in automático)</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {error && <Alert variant="danger">{error}</Alert>}
+          
+          <Alert variant="info" className="mb-3">
+            <strong>ℹ️ Importante:</strong> Al hacer un pago adelantado, el vehículo pasará automáticamente a "Activas" con la fecha de salida prevista.
+          </Alert>
 
-        <div className="stay-details mb-4">
-          <h5>Detalles del Vehículo</h5>
-          <div className="detail-row">
-            <strong>Matrícula:</strong>
-            <span className="license-plate-display">{stay.vehicle.license_plate}</span>
+          <div className="stay-details mb-4">
+            <h5>Detalles del Vehículo</h5>
+            <div className="detail-row">
+              <strong>Matrícula:</strong>
+              <span className="license-plate-display">{stay.vehicle.license_plate}</span>
+            </div>
+            <div className="detail-row">
+              <strong>Tipo:</strong>
+              <span>{stay.vehicle.vehicle_type}</span>
+            </div>
+            <div className="detail-row">
+              <strong>Plaza:</strong>
+              <span>
+                {stay.parking_spot 
+                  ? `${stay.parking_spot.spot_type} - ${stay.parking_spot.spot_number}` 
+                  : 'No asignada'}
+              </span>
+            </div>
+            <div className="detail-row">
+              <strong>Tarifa:</strong>
+              <span className="text-success">{pricePerNight}€/noche</span>
+            </div>
           </div>
-          <div className="detail-row">
-            <strong>Tipo:</strong>
-            <span>{stay.vehicle.vehicle_type}</span>
-          </div>
-          <div className="detail-row">
-            <strong>Plaza:</strong>
-            <span>
-              {stay.parking_spot 
-                ? `${stay.parking_spot.spot_type} - ${stay.parking_spot.spot_number}` 
-                : 'No asignada'}
-            </span>
-          </div>
-          <div className="detail-row">
-            <strong>Tarifa:</strong>
-            <span className="text-success">{pricePerNight}€/noche</span>
-          </div>
-        </div>
 
-        <Form onSubmit={handleSubmit}>
-          <h5 className="mb-3">Fechas de Estancia (Editables)</h5>
+          <Form onSubmit={handleSubmit}>
+            <h5 className="mb-3">Fechas de Estancia (Editables)</h5>
 
-          <Form.Group className="mb-3">
-            <Form.Label><strong>Fecha/Hora de Entrada:</strong></Form.Label>
-            <Form.Control
-              type="datetime-local"
-              value={checkInTime}
-              onChange={(e) => setCheckInTime(e.target.value)}
-              disabled={loading || printing}
-              required
-            />
-            <Form.Text className="text-muted">
-              Fecha real o estimada de entrada
-            </Form.Text>
-          </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label><strong>Fecha/Hora de Entrada:</strong></Form.Label>
+              <Form.Control
+                type="datetime-local"
+                value={checkInTime}
+                onChange={(e) => setCheckInTime(e.target.value)}
+                disabled={loading || printing}
+                required
+              />
+              <Form.Text className="text-muted">
+                Fecha real o estimada de entrada
+              </Form.Text>
+            </Form.Group>
 
-          <Form.Group className="mb-3">
-            <Form.Label><strong>Fecha/Hora de Salida PREVISTA:</strong></Form.Label>
-            <Form.Control
-              type="datetime-local"
-              value={checkOutTime}
-              onChange={(e) => setCheckOutTime(e.target.value)}
-              disabled={loading || printing}
-              required
-            />
-            <Form.Text className="text-muted">
-              Fecha estimada de salida (puede ajustarse después en el checkout)
-            </Form.Text>
-          </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label><strong>Fecha/Hora de Salida PREVISTA:</strong></Form.Label>
+              <Form.Control
+                type="datetime-local"
+                value={checkOutTime}
+                onChange={(e) => setCheckOutTime(e.target.value)}
+                disabled={loading || printing}
+                required
+              />
+              <Form.Text className="text-muted">
+                Fecha estimada de salida (puede ajustarse después en el checkout)
+              </Form.Text>
+            </Form.Group>
 
-          {nights > 0 && (
-            <Alert variant="secondary" className="mb-3">
-              <strong>Noches estimadas:</strong> {nights} noche{nights !== 1 ? 's' : ''}
-            </Alert>
-          )}
+            {nights > 0 && (
+              <Alert variant="secondary" className="mb-3">
+                <strong>Noches estimadas:</strong> {nights} noche{nights !== 1 ? 's' : ''}
+              </Alert>
+            )}
 
-          <Form.Group className="mb-3">
-            <Form.Label>Importe (€)</Form.Label>
-            <Form.Control
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="Ej: 10.00"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              required
-              disabled={loading || printing}
-            />
-            <Form.Text className="text-muted">
-              Precio calculado: {nights} noche{nights !== 1 ? 's' : ''} × {pricePerNight}€ = {(nights * pricePerNight).toFixed(2)}€
-            </Form.Text>
-          </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Importe (€)</Form.Label>
+              <Form.Control
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="Ej: 10.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                onWheel={(e) => e.target.blur()}
+                required
+                disabled={loading || printing}
+              />
+              <Form.Text className="text-muted">
+                Precio calculado: {nights} noche{nights !== 1 ? 's' : ''} × {pricePerNight}€ = {(nights * pricePerNight).toFixed(2)}€
+              </Form.Text>
+            </Form.Group>
 
-          <Form.Group className="mb-3">
-            <Form.Label>Método de Pago</Form.Label>
-            <Form.Select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              disabled={loading || printing}
-            >
-              <option value="cash">Efectivo</option>
-              <option value="card">Tarjeta</option>
-              <option value="transfer">Transferencia</option>
-            </Form.Select>
-          </Form.Group>
+            <Form.Group className="mb-3">
+              <Form.Label>Método de Pago</Form.Label>
+              <Form.Select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                disabled={loading || printing}
+              >
+                <option value="cash">Efectivo</option>
+                <option value="card">Tarjeta</option>
+                <option value="transfer">Transferencia</option>
+              </Form.Select>
+            </Form.Group>
 
-          <div className="d-grid gap-2">
-            <Button 
-              variant="info" 
-              onClick={handlePrintTicket}
-              disabled={!amount || parseFloat(amount) <= 0 || printing || loading}
-            >
-              {printing ? (
-                <>
-                  <Spinner
-                    as="span"
-                    animation="border"
-                    size="sm"
-                    role="status"
-                    aria-hidden="true"
-                    className="me-2"
-                  />
-                  Imprimiendo...
-                </>
-              ) : (
-                <>🖨️ Generar Ticket</>
-              )}
-            </Button>
+            <div className="d-grid gap-2">
+              <Button 
+                variant="info" 
+                onClick={handlePrintTicket}
+                disabled={!amount || parseFloat(amount) <= 0 || printing || loading}
+              >
+                {printing ? (
+                  <>
+                    <Spinner
+                      as="span"
+                      animation="border"
+                      size="sm"
+                      role="status"
+                      aria-hidden="true"
+                      className="me-2"
+                    />
+                    Imprimiendo...
+                  </>
+                ) : (
+                  <>🖨️ Generar Ticket</>
+                )}
+              </Button>
 
-            <Button 
-              variant="success" 
-              type="submit"
-              disabled={loading || printing}
-              size="lg"
-            >
-              {loading ? (
-                <>
-                  <Spinner
-                    as="span"
-                    animation="border"
-                    size="sm"
-                    role="status"
-                    aria-hidden="true"
-                    className="me-2"
-                  />
-                  Procesando...
-                </>
-              ) : (
-                <>✓ Confirmar Pago Adelantado y Check-in</>
-              )}
-            </Button>
-          </div>
-        </Form>
-      </Modal.Body>
-      <Modal.Footer>
-        <Button variant="secondary" onClick={handleClose} disabled={loading || printing}>
-          Cancelar
-        </Button>
-      </Modal.Footer>
-    </Modal>
+              <Button 
+                variant="success" 
+                type="submit"
+                disabled={loading || printing}
+                size="lg"
+              >
+                {loading ? (
+                  <>
+                    <Spinner
+                      as="span"
+                      animation="border"
+                      size="sm"
+                      role="status"
+                      aria-hidden="true"
+                      className="me-2"
+                    />
+                    Procesando...
+                  </>
+                ) : (
+                  <>✓ Confirmar Pago Adelantado y Check-in</>
+                )}
+              </Button>
+            </div>
+          </Form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={handleClose} disabled={loading || printing}>
+            Cancelar
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ← NUEVO: Modal de validación de decimales */}
+      <Modal show={showRoundModal} onHide={handleCancelRound} centered size="sm">
+        <Modal.Header closeButton style={{ backgroundColor: '#fff3cd', borderBottom: '2px solid #ffc107' }}>
+          <Modal.Title>⚠️ Precio con decimales</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Alert variant="warning" className="mb-3">
+            Has introducido: <strong className="h5">{detectedPrice.toFixed(2)}€</strong>
+          </Alert>
+          <p className="mb-0"><strong>¿Qué deseas hacer?</strong></p>
+        </Modal.Body>
+        <Modal.Footer style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+          <Button variant="secondary" onClick={handleCancelRound} size="sm">
+            Cancelar
+          </Button>
+          <Button variant="warning" onClick={handleKeepPrice} size="sm">
+            Mantener {detectedPrice.toFixed(2)}€
+          </Button>
+          <Button variant="success" onClick={handleRoundPrice} size="sm">
+            Redondear a {roundedPrice}€
+          </Button>
+        </Modal.Footer>
+      </Modal>
+    </>
   );
 }
 

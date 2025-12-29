@@ -294,12 +294,7 @@ function CloseCashModal({ show, onHide, session, onClose, hasPending }) {
   };
 
   const handleSubmit = async () => {
-    if (hasPending) {
-      const confirm = window.confirm(
-        'Hay transacciones pendientes de registrar. ¿Deseas cerrar la caja de todos modos?'
-      );
-      if (!confirm) return;
-    }
+
 
     const cashTotal = calculateCashTotal();
     const cashDiff = cashTotal - (preCloseInfo?.expected_cash || 0);
@@ -378,12 +373,6 @@ function CloseCashModal({ show, onHide, session, onClose, hasPending }) {
             aria-valuemax="100"
           ></div>
         </div>
-
-        {hasPending && (
-          <Alert variant="warning" className="mb-3">
-            ⚠️ <strong>Atención:</strong> Hay {preCloseInfo.pending_count} transacciones pendientes de registrar
-          </Alert>
-        )}
 
         {/* PASO 1: RESUMEN ESPERADO */}
         {step === 1 && (

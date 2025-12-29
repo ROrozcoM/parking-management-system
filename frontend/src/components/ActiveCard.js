@@ -112,8 +112,10 @@ function ActiveCard({ refreshData }) {
     try {
       setLoading(true);
       const data = await staysAPI.getActiveStays();
+      console.log('🔍 Active stays:', data.length);
       setActiveStays(data);
       setError(null);
+      console.log('✅ ACTIVE STAYS:', data.length);
     } catch (err) {
       setError('Failed to fetch active stays');
       console.error(err);
@@ -135,6 +137,7 @@ function ActiveCard({ refreshData }) {
       const data = await response.json();
       console.log('🔍 Checkouts due today:', data.stays);
       setCheckoutsDueToday(data.stays || []);
+      console.log('✅ CHECKOUTS DUE:', (data.stays || []).length);
     } catch (err) {
       console.error('Error fetching checkouts due today:', err);
     }

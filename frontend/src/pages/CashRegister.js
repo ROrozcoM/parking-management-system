@@ -391,7 +391,6 @@ function CashRegister() {
         onHide={() => setShowCloseModal(false)}
         session={activeSession}
         onClose={handleCloseSession}
-        hasPending={pendingTransactions.length > 0}
       />
 
       <WithdrawalModal

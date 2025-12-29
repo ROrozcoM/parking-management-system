@@ -12,6 +12,12 @@ function ProductSaleModal({ show, onHide, onSuccess }) {
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [error, setError] = useState(null);
 
+  // ← NUEVO: Estados para modal de validación de decimales
+  const [showRoundModal, setShowRoundModal] = useState(false);
+  const [detectedPrice, setDetectedPrice] = useState(0);
+  const [roundedPrice, setRoundedPrice] = useState(0);
+  const [pendingSubmit, setPendingSubmit] = useState(null);
+
   useEffect(() => {
     if (show) {
       fetchProducts();
@@ -71,13 +77,30 @@ function ProductSaleModal({ show, onHide, onSuccess }) {
       return;
     }
 
+    // ← NUEVO: Validar decimales en precio unitario
+    const numValue = parseFloat(customPrice);
+    if (numValue % 1 !== 0) {
+      // Tiene decimales - mostrar modal
+      setDetectedPrice(numValue);
+      setRoundedPrice(Math.round(numValue));
+      setPendingSubmit(e);
+      setShowRoundModal(true);
+      return;
+    }
+
+    // Si no tiene decimales, proceder directamente
+    await executeProductSale(numValue);
+  };
+
+  // ← NUEVO: Función para ejecutar la venta con el precio validado
+  const executeProductSale = async (priceToUse) => {
     setLoading(true);
 
     try {
       const body = {
         quantity: parseInt(quantity),
         payment_method: paymentMethod,
-        unit_price: parseFloat(customPrice),
+        unit_price: priceToUse,
         product_name: customProductName.trim()
       };
 
@@ -116,6 +139,27 @@ function ProductSaleModal({ show, onHide, onSuccess }) {
     }
   };
 
+  // ← NUEVO: Handlers para el modal de redondeo
+  const handleRoundPrice = () => {
+    setCustomPrice(roundedPrice.toString());
+    setShowRoundModal(false);
+    setPendingSubmit(null);
+    // Ejecutar venta con precio redondeado
+    executeProductSale(roundedPrice);
+  };
+
+  const handleKeepPrice = () => {
+    setShowRoundModal(false);
+    setPendingSubmit(null);
+    // Ejecutar venta con precio original
+    executeProductSale(detectedPrice);
+  };
+
+  const handleCancelRound = () => {
+    setShowRoundModal(false);
+    setPendingSubmit(null);
+  };
+
   const handleClose = () => {
     setSelectedProductId('');
     setCustomProductName('');
@@ -123,182 +167,211 @@ function ProductSaleModal({ show, onHide, onSuccess }) {
     setQuantity(1);
     setPaymentMethod('cash');
     setError(null);
+    setShowRoundModal(false);
+    setPendingSubmit(null);
     onHide();
   };
 
   return (
-    <Modal show={show} onHide={handleClose} centered size="lg">
-      <Modal.Header closeButton style={{ backgroundColor: '#28a745', color: 'white' }}>
-        <Modal.Title>🛒 Registrar Venta de Productos</Modal.Title>
-      </Modal.Header>
-      <Modal.Body>
-        {error && <Alert variant="danger">{error}</Alert>}
+    <>
+      <Modal show={show} onHide={handleClose} centered size="lg">
+        <Modal.Header closeButton style={{ backgroundColor: '#28a745', color: 'white' }}>
+          <Modal.Title>🛒 Registrar Venta de Productos</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {error && <Alert variant="danger">{error}</Alert>}
 
-        <Form onSubmit={handleSubmit}>
-          {/* Selector de producto */}
-          <Form.Group className="mb-3">
-            <Form.Label><strong>Producto:</strong></Form.Label>
-            {loadingProducts ? (
-              <div className="text-center py-3">
-                <Spinner animation="border" size="sm" />
-                <span className="ms-2">Cargando productos...</span>
-              </div>
-            ) : (
-              <Form.Select
-                value={selectedProductId}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setSelectedProductId(value);
-                  setError(null);
-                  
-                  // Pre-rellenar nombre y precio según selección
-                  if (value === 'other') {
-                    setCustomProductName('');
-                    setCustomPrice('');
-                  } else if (value) {
-                    const product = products.find(p => p.id === parseInt(value));
-                    if (product) {
-                      setCustomProductName(product.name);
-                      setCustomPrice(product.price.toString());
+          <Form onSubmit={handleSubmit}>
+            {/* Selector de producto */}
+            <Form.Group className="mb-3">
+              <Form.Label><strong>Producto:</strong></Form.Label>
+              {loadingProducts ? (
+                <div className="text-center py-3">
+                  <Spinner animation="border" size="sm" />
+                  <span className="ms-2">Cargando productos...</span>
+                </div>
+              ) : (
+                <Form.Select
+                  value={selectedProductId}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSelectedProductId(value);
+                    setError(null);
+                    
+                    // Pre-rellenar nombre y precio según selección
+                    if (value === 'other') {
+                      setCustomProductName('');
+                      setCustomPrice('');
+                    } else if (value) {
+                      const product = products.find(p => p.id === parseInt(value));
+                      if (product) {
+                        setCustomProductName(product.name);
+                        setCustomPrice(product.price.toString());
+                      }
+                    } else {
+                      setCustomProductName('');
+                      setCustomPrice('');
                     }
-                  } else {
-                    setCustomProductName('');
-                    setCustomPrice('');
-                  }
-                }}
-                disabled={loading}
-                required
-              >
-                <option value="">-- Selecciona un producto --</option>
-                {products.map(product => (
-                  <option key={product.id} value={product.id}>
-                    {product.name} - {product.price.toFixed(2)}€ (precio sugerido)
-                  </option>
-                ))}
-                <option value="other">➕ Otro producto</option>
-              </Form.Select>
-            )}
-          </Form.Group>
-
-          {/* Nombre y precio (siempre visible si hay producto seleccionado) */}
-          {selectedProductId && (
-            <>
-              <Form.Group className="mb-3">
-                <Form.Label><strong>Nombre del producto:</strong></Form.Label>
-                <Form.Control
-                  type="text"
-                  placeholder="Nombre del producto"
-                  value={customProductName}
-                  onChange={(e) => setCustomProductName(e.target.value)}
-                  disabled={loading || selectedProductId !== 'other'}
-                  required
-                  style={{
-                    backgroundColor: selectedProductId !== 'other' ? '#f8f9fa' : 'white'
                   }}
-                />
-                {selectedProductId !== 'other' && (
-                  <Form.Text className="text-muted">
-                    Producto del catálogo (no editable)
-                  </Form.Text>
-                )}
-              </Form.Group>
-
-              <Form.Group className="mb-3">
-                <Form.Label><strong>Precio unitario (€):</strong></Form.Label>
-                <Form.Control
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  placeholder="0.00"
-                  value={customPrice}
-                  onChange={(e) => setCustomPrice(e.target.value)}
                   disabled={loading}
                   required
-                />
-                {selectedProductId !== 'other' && (
-                  <Form.Text className="text-success">
-                    ✏️ Puedes modificar el precio sugerido
-                  </Form.Text>
-                )}
-              </Form.Group>
-            </>
-          )}
-
-          {/* Cantidad */}
-          <Form.Group className="mb-3">
-            <Form.Label><strong>Cantidad:</strong></Form.Label>
-            <Form.Control
-              type="number"
-              min="1"
-              value={quantity}
-              onChange={(e) => setQuantity(e.target.value)}
-              disabled={loading}
-              required
-            />
-          </Form.Group>
-
-          {/* Total calculado */}
-          {selectedProductId && (
-            <Alert variant="success" className="mb-3">
-              <div className="d-flex justify-content-between align-items-center">
-                <strong>Total a cobrar:</strong>
-                <span className="h4 mb-0">{calculateTotal()} €</span>
-              </div>
-            </Alert>
-          )}
-
-          {/* Método de pago */}
-          <Form.Group className="mb-3">
-            <Form.Label><strong>Método de pago:</strong></Form.Label>
-            <Form.Select
-              value={paymentMethod}
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              disabled={loading}
-            >
-              <option value="cash">💵 Efectivo</option>
-              <option value="card">💳 Tarjeta</option>
-              <option value="transfer">🏦 Transferencia</option>
-            </Form.Select>
-            {paymentMethod === 'transfer' && (
-              <Form.Text className="text-muted">
-                Las transferencias quedarán pendientes de confirmación
-              </Form.Text>
-            )}
-          </Form.Group>
-
-          {/* Botón de registrar */}
-          <div className="d-grid">
-            <Button
-              variant="success"
-              type="submit"
-              size="lg"
-              disabled={loading || loadingProducts || !selectedProductId}
-            >
-              {loading ? (
-                <>
-                  <Spinner
-                    as="span"
-                    animation="border"
-                    size="sm"
-                    role="status"
-                    aria-hidden="true"
-                    className="me-2"
-                  />
-                  Registrando...
-                </>
-              ) : (
-                <>✓ Registrar Venta</>
+                >
+                  <option value="">-- Selecciona un producto --</option>
+                  {products.map(product => (
+                    <option key={product.id} value={product.id}>
+                      {product.name} - {product.price.toFixed(2)}€ (precio sugerido)
+                    </option>
+                  ))}
+                  <option value="other">➕ Otro producto</option>
+                </Form.Select>
               )}
-            </Button>
-          </div>
-        </Form>
-      </Modal.Body>
-      <Modal.Footer>
-        <Button variant="secondary" onClick={handleClose} disabled={loading}>
-          Cancelar
-        </Button>
-      </Modal.Footer>
-    </Modal>
+            </Form.Group>
+
+            {/* Nombre y precio (siempre visible si hay producto seleccionado) */}
+            {selectedProductId && (
+              <>
+                <Form.Group className="mb-3">
+                  <Form.Label><strong>Nombre del producto:</strong></Form.Label>
+                  <Form.Control
+                    type="text"
+                    placeholder="Nombre del producto"
+                    value={customProductName}
+                    onChange={(e) => setCustomProductName(e.target.value)}
+                    disabled={loading || selectedProductId !== 'other'}
+                    required
+                    style={{
+                      backgroundColor: selectedProductId !== 'other' ? '#f8f9fa' : 'white'
+                    }}
+                  />
+                  {selectedProductId !== 'other' && (
+                    <Form.Text className="text-muted">
+                      Producto del catálogo (no editable)
+                    </Form.Text>
+                  )}
+                </Form.Group>
+
+                <Form.Group className="mb-3">
+                  <Form.Label><strong>Precio unitario (€):</strong></Form.Label>
+                  <Form.Control
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    placeholder="0.00"
+                    value={customPrice}
+                    onChange={(e) => setCustomPrice(e.target.value)}
+                    onWheel={(e) => e.target.blur()}
+                    disabled={loading}
+                    required
+                  />
+                  {selectedProductId !== 'other' && (
+                    <Form.Text className="text-success">
+                      ✏️ Puedes modificar el precio sugerido
+                    </Form.Text>
+                  )}
+                </Form.Group>
+              </>
+            )}
+
+            {/* Cantidad */}
+            <Form.Group className="mb-3">
+              <Form.Label><strong>Cantidad:</strong></Form.Label>
+              <Form.Control
+                type="number"
+                min="1"
+                value={quantity}
+                onChange={(e) => setQuantity(e.target.value)}
+                disabled={loading}
+                required
+              />
+            </Form.Group>
+
+            {/* Total calculado */}
+            {selectedProductId && (
+              <Alert variant="success" className="mb-3">
+                <div className="d-flex justify-content-between align-items-center">
+                  <strong>Total a cobrar:</strong>
+                  <span className="h4 mb-0">{calculateTotal()} €</span>
+                </div>
+              </Alert>
+            )}
+
+            {/* Método de pago */}
+            <Form.Group className="mb-3">
+              <Form.Label><strong>Método de pago:</strong></Form.Label>
+              <Form.Select
+                value={paymentMethod}
+                onChange={(e) => setPaymentMethod(e.target.value)}
+                disabled={loading}
+              >
+                <option value="cash">💵 Efectivo</option>
+                <option value="card">💳 Tarjeta</option>
+                <option value="transfer">🏦 Transferencia</option>
+              </Form.Select>
+              {paymentMethod === 'transfer' && (
+                <Form.Text className="text-muted">
+                  Las transferencias quedarán pendientes de confirmación
+                </Form.Text>
+              )}
+            </Form.Group>
+
+            {/* Botón de registrar */}
+            <div className="d-grid">
+              <Button
+                variant="success"
+                type="submit"
+                size="lg"
+                disabled={loading || loadingProducts || !selectedProductId}
+              >
+                {loading ? (
+                  <>
+                    <Spinner
+                      as="span"
+                      animation="border"
+                      size="sm"
+                      role="status"
+                      aria-hidden="true"
+                      className="me-2"
+                    />
+                    Registrando...
+                  </>
+                ) : (
+                  <>✓ Registrar Venta</>
+                )}
+              </Button>
+            </div>
+          </Form>
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={handleClose} disabled={loading}>
+            Cancelar
+          </Button>
+        </Modal.Footer>
+      </Modal>
+
+      {/* ← NUEVO: Modal de validación de decimales */}
+      <Modal show={showRoundModal} onHide={handleCancelRound} centered size="sm">
+        <Modal.Header closeButton style={{ backgroundColor: '#fff3cd', borderBottom: '2px solid #ffc107' }}>
+          <Modal.Title>⚠️ Precio con decimales</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          <Alert variant="warning" className="mb-3">
+            Has introducido: <strong className="h5">{detectedPrice.toFixed(2)}€</strong>
+          </Alert>
+          <p className="mb-0"><strong>¿Qué deseas hacer?</strong></p>
+        </Modal.Body>
+        <Modal.Footer style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }}>
+          <Button variant="secondary" onClick={handleCancelRound} size="sm">
+            Cancelar
+          </Button>
+          <Button variant="warning" onClick={handleKeepPrice} size="sm">
+            Mantener {detectedPrice.toFixed(2)}€
+          </Button>
+          <Button variant="success" onClick={handleRoundPrice} size="sm">
+            Redondear a {roundedPrice}€
+          </Button>
+        </Modal.Footer>
+      </Modal>
+    </>
   );
 }
 

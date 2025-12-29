@@ -1410,6 +1410,7 @@ def calculate_expected_by_method(db: Session, session_id: int):
     """
     Calcula el importe esperado en caja DESGLOSADO por método de pago
     Retorna: dict con expected_cash, expected_card, expected_transfer
+    IMPORTANTE: expected_total es SOLO efectivo (lo físico en caja)
     """
     session = db.query(models.CashSession).filter(
         models.CashSession.id == session_id
@@ -1444,13 +1445,15 @@ def calculate_expected_by_method(db: Session, session_id: int):
         elif tx.transaction_type == models.TransactionType.WITHDRAWAL:
             expected_cash -= amount
     
-    expected_total = expected_cash + expected_card + expected_transfer
+    # ← CAMBIO CRÍTICO: expected_total es SOLO lo físico en caja (efectivo)
+    # Card y transfer son informativos, no están en la caja física
+    expected_total = expected_cash
     
     return {
         "expected_cash": expected_cash,
         "expected_card": expected_card,
         "expected_transfer": expected_transfer,
-        "expected_total": expected_total
+        "expected_total": expected_total  # Solo efectivo físico
     }
 
 
