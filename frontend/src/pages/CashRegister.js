@@ -11,6 +11,7 @@ function CashRegister() {
   const [error, setError] = useState(null);
   const [pendingTransactions, setPendingTransactions] = useState([]);
   const [transactions, setTransactions] = useState([]);
+  const [lastClosingAmount, setLastClosingAmount] = useState(null);
   
   // Modals
   const [showOpenModal, setShowOpenModal] = useState(false);
@@ -47,6 +48,9 @@ function CashRegister() {
           setActiveSession(null);
           setTransactions([]);
           setPendingTransactions([]);
+
+          // cragar el último cierre
+          await fetchLastClosing();
         } else {
           throw err;
         }
@@ -58,6 +62,26 @@ function CashRegister() {
       console.error(err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchLastClosing = async () => {
+    try {
+      const response = await fetch('/api/cash/last-closing', {
+       headers: {
+          'Authorization': `Bearer ${localStorage.getItem('token')}`
+        }
+      });
+    
+      if (!response.ok) {
+        throw new Error('Error al cargar último cierre');
+      }
+    
+      const data = await response.json();
+      setLastClosingAmount(data.last_closing_amount);
+    } catch (err) {
+      console.error('Error cargando último cierre:', err);
+      setLastClosingAmount(null);
     }
   };
 
@@ -191,6 +215,7 @@ function CashRegister() {
           show={showOpenModal}
           onHide={() => setShowOpenModal(false)}
           onOpen={handleOpenSession}
+          lastClosingAmount={lastClosingAmount}
         />
       </div>
     );

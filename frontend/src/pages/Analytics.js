@@ -11,8 +11,7 @@ const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D'
 function Analytics() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [timeRange, setTimeRange] = useState(30); // días
-  const [activePaymentTab, setActivePaymentTab] = useState('transfer'); // transfer o card
+  const [activePaymentTab, setActivePaymentTab] = useState('transfer');
   const navigate = useNavigate();
 
   // Estados para cada tipo de datos
@@ -23,33 +22,55 @@ function Analytics() {
   const [countryDistribution, setCountryDistribution] = useState([]);
   const [rentalTotals, setRentalTotals] = useState(null);
   const [peakHours, setPeakHours] = useState([]);
-  const [paymentMethods, setPaymentMethods] = useState([]);  // ← Para Pie Chart original
-  const [paymentMethodsDetailed, setPaymentMethodsDetailed] = useState(null);  // ← NUEVO
-  const [stayDuration, setStayDuration] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [paymentMethodsDetailed, setPaymentMethodsDetailed] = useState(null);
+  const [paymentDistByCountry, setPaymentDistByCountry] = useState(null); // ← NUEVO
   const [stayLengthDistribution, setStayLengthDistribution] = useState([]);
   const [weekdayDistribution, setWeekdayDistribution] = useState([]);
   const [rentalVsOwned, setRentalVsOwned] = useState(null);
 
-  // ← Estados para ocupación
+  // Estados para ocupación
   const [dailyOccupancy, setDailyOccupancy] = useState(null);
+  const [checkinsTimeline, setCheckinsTimeline] = useState(null);
   const [occupancyPeriod, setOccupancyPeriod] = useState(null);
   const [occupancyStartDate, setOccupancyStartDate] = useState('');
   const [occupancyEndDate, setOccupancyEndDate] = useState('');
   const [occupancyCountry, setOccupancyCountry] = useState('all');
   const [loadingOccupancy, setLoadingOccupancy] = useState(false);
 
-  // ← NUEVOS: Estados para rendimiento de usuarios
+  // Estados para rendimiento de usuarios
   const [userPerformance, setUserPerformance] = useState(null);
   const [performanceStartDate, setPerformanceStartDate] = useState('');
   const [performanceEndDate, setPerformanceEndDate] = useState('');
   const [loadingPerformance, setLoadingPerformance] = useState(false);
-  const [performanceTimeRange, setPerformanceTimeRange] = useState('all'); // all, 7, 30, 90
+  const [performanceTimeRange, setPerformanceTimeRange] = useState('all');
 
   useEffect(() => {
     loadAllData();
     loadDailyOccupancy();
-    loadUserPerformance(); // ← NUEVO: Cargar rendimiento por defecto (TODO)
-  }, [timeRange]);
+    loadCheckinsTimeline();
+    loadUserPerformance();
+  }, []);
+
+  // Auto-cargar ocupación de última semana
+  useEffect(() => {
+    const today = new Date();
+    const lastWeek = new Date();
+    lastWeek.setDate(today.getDate() - 7);
+    
+    const todayStr = today.toISOString().split('T')[0];
+    const lastWeekStr = lastWeek.toISOString().split('T')[0];
+    
+    setOccupancyStartDate(lastWeekStr);
+    setOccupancyEndDate(todayStr);
+    
+    setTimeout(() => {
+      const url = `/api/analytics/occupancy-period?start_date=${lastWeekStr}&end_date=${todayStr}&country=all`;
+      fetchWithAuth(url)
+        .then(data => setOccupancyPeriod(data))
+        .catch(err => console.error('Error auto-cargando ocupación:', err));
+    }, 500);
+  }, []);
 
   const fetchWithAuth = async (url) => {
     const response = await fetch(url, {
@@ -76,7 +97,6 @@ function Analytics() {
       setLoading(true);
       setError(null);
 
-      // Cargar todos los datos en paralelo
       const [
         overviewData,
         revenueData,
@@ -86,20 +106,20 @@ function Analytics() {
         peakHoursData,
         paymentMethodsData,
         paymentMethodsDetailedData,
-        stayDurationData,
+        paymentDistByCountryData, // ← NUEVO
         stayLengthData,
         weekdayData,
         rentalVsOwnedData
       ] = await Promise.all([
         fetchWithAuth('/api/analytics/overview'),
-        fetchWithAuth(`/api/analytics/revenue-timeline?days=${timeRange}`),
-        fetchWithAuth(`/api/analytics/nights-timeline?days=${timeRange}`),
+        fetchWithAuth('/api/analytics/revenue-timeline'),
+        fetchWithAuth('/api/analytics/nights-timeline'),
         fetchWithAuth('/api/analytics/total-nights'),
         fetchWithAuth('/api/analytics/country-distribution'),
         fetchWithAuth('/api/analytics/peak-hours'),
         fetchWithAuth('/api/analytics/payment-methods'),
         fetchWithAuth('/api/analytics/payment-methods-detailed'),
-        fetchWithAuth('/api/analytics/stay-duration-by-country'),
+        fetchWithAuth('/api/analytics/payment-distribution-by-country'), // ← NUEVO
         fetchWithAuth('/api/analytics/stay-length-distribution'),
         fetchWithAuth('/api/analytics/weekday-distribution'),
         fetchWithAuth('/api/analytics/rental-vs-owned')
@@ -114,7 +134,7 @@ function Analytics() {
       setPeakHours(peakHoursData);
       setPaymentMethods(paymentMethodsData);
       setPaymentMethodsDetailed(paymentMethodsDetailedData);
-      setStayDuration(stayDurationData);
+      setPaymentDistByCountry(paymentDistByCountryData); // ← NUEVO
       setStayLengthDistribution(stayLengthData);
       setWeekdayDistribution(weekdayData);
       setRentalVsOwned(rentalVsOwnedData);
@@ -129,7 +149,6 @@ function Analytics() {
     }
   };
 
-  // ← Cargar ocupación diaria media
   const loadDailyOccupancy = async () => {
     try {
       const data = await fetchWithAuth('/api/analytics/daily-occupancy-average');
@@ -139,7 +158,15 @@ function Analytics() {
     }
   };
 
-  // ← Calcular ocupación por período
+  const loadCheckinsTimeline = async () => {
+    try {
+      const data = await fetchWithAuth('/api/analytics/checkins-around-today?days_before=7&days_after=7');
+      setCheckinsTimeline(data);
+    } catch (err) {
+      console.error('Error cargando check-ins timeline:', err);
+    }
+  };
+
   const calculateOccupancyPeriod = async () => {
     if (!occupancyStartDate || !occupancyEndDate) {
       alert('Por favor selecciona ambas fechas');
@@ -159,7 +186,6 @@ function Analytics() {
     }
   };
 
-  // ← NUEVO: Cargar rendimiento de usuarios
   const loadUserPerformance = async (startDate = null, endDate = null) => {
     try {
       setLoadingPerformance(true);
@@ -178,17 +204,14 @@ function Analytics() {
     }
   };
 
-  // ← NUEVO: Manejar botones rápidos de tiempo
   const handlePerformanceQuickRange = (days) => {
     setPerformanceTimeRange(days);
     
     if (days === 'all') {
-      // TODO el histórico
       setPerformanceStartDate('');
       setPerformanceEndDate('');
       loadUserPerformance();
     } else {
-      // Calcular fechas
       const end = new Date();
       const start = new Date();
       start.setDate(start.getDate() - days);
@@ -202,7 +225,6 @@ function Analytics() {
     }
   };
 
-  // ← NUEVO: Calcular con rango personalizado
   const calculateCustomPerformance = () => {
     if (!performanceStartDate || !performanceEndDate) {
       alert('Por favor selecciona ambas fechas');
@@ -235,40 +257,21 @@ function Analytics() {
 
   return (
     <div className="container-fluid mt-4 mb-5">
-      {/* Header */}
-      <div className="d-flex justify-content-between align-items-center mb-4">
-        <div>
-          {/*<h1>📊 Analytics Dashboard</h1>*/}
-        </div>
-        <ButtonGroup>
-          <Button 
-            variant={timeRange === 7 ? 'primary' : 'outline-primary'}
-            onClick={() => setTimeRange(7)}
-          >
-            7 días
-          </Button>
-          <Button 
-            variant={timeRange === 30 ? 'primary' : 'outline-primary'}
-            onClick={() => setTimeRange(30)}
-          >
-            30 días
-          </Button>
-          <Button 
-            variant={timeRange === 90 ? 'primary' : 'outline-primary'}
-            onClick={() => setTimeRange(90)}
-          >
-            90 días
-          </Button>
-        </ButtonGroup>
+      {/* Header con Campaña */}
+      <div className="mb-4 text-center">
+        {overview?.campaign_name && (
+          <h4 className="text-muted">Campaña {overview.campaign_name}</h4>
+        )}
       </div>
 
-      {/* KPIs Principales */}
+      {/* KPIs Principales - CAMPAÑA ACTUAL */}
       <Row className="mb-4">
         <Col md={3}>
           <Card className="text-center">
             <Card.Body>
               <h6 className="text-muted">Total Estancias</h6>
               <h2 className="text-primary">{overview?.total_stays || 0}</h2>
+              <small className="text-muted">Campaña actual</small>
             </Card.Body>
           </Card>
         </Col>
@@ -277,6 +280,7 @@ function Analytics() {
             <Card.Body>
               <h6 className="text-muted">Ingresos Totales</h6>
               <h2 className="text-success">{overview?.total_revenue?.toFixed(2) || 0} €</h2>
+              <small className="text-muted">Campaña actual</small>
             </Card.Body>
           </Card>
         </Col>
@@ -306,13 +310,13 @@ function Analytics() {
         </Col>
       </Row>
 
-      {/* KPIs de Métodos de Pago - Compactos */}
+      {/* KPIs de Métodos de Pago - CAMPAÑA ACTUAL */}
       {paymentMethodsDetailed && (
-        <Row className="mb-3">
+        <Row className="mb-4">
           <Col md={4}>
             <Card className="text-center border-success">
               <Card.Body className="py-2">
-                <small className="text-muted d-block mb-1">Efectivo</small>
+                <small className="text-muted d-block mb-1">💵 Efectivo</small>
                 <h5 className="text-success mb-0">{paymentMethodsDetailed.totals.cash.amount.toFixed(2)} €</h5>
                 <small className="text-muted">({paymentMethodsDetailed.totals.cash.count} pagos)</small>
               </Card.Body>
@@ -321,7 +325,7 @@ function Analytics() {
           <Col md={4}>
             <Card className="text-center border-info">
               <Card.Body className="py-2">
-                <small className="text-muted d-block mb-1">Tarjeta</small>
+                <small className="text-muted d-block mb-1">💳 Tarjeta</small>
                 <h5 className="text-info mb-0">{paymentMethodsDetailed.totals.card.amount.toFixed(2)} €</h5>
                 <small className="text-muted">({paymentMethodsDetailed.totals.card.count} pagos)</small>
               </Card.Body>
@@ -330,7 +334,7 @@ function Analytics() {
           <Col md={4}>
             <Card className="text-center border-primary">
               <Card.Body className="py-2">
-                <small className="text-muted d-block mb-1">Transferencia</small>
+                <small className="text-muted d-block mb-1">🏦 Transferencia</small>
                 <h5 className="text-primary mb-0">{paymentMethodsDetailed.totals.transfer.amount.toFixed(2)} €</h5>
                 <small className="text-muted">({paymentMethodsDetailed.totals.transfer.count} pagos)</small>
               </Card.Body>
@@ -339,18 +343,477 @@ function Analytics() {
         </Row>
       )}
 
-      {/* SECCIÓN: OCUPACIÓN DETALLADA */}
+      {/* Gráficos de Línea: Ingresos y Pernoctas - CAMPAÑA ACTUAL */}
+      <Row className="mb-4">
+        <Col md={6}>
+          <Card>
+            <Card.Header>
+              <h5>Ingresos Diarios - Campaña {overview?.campaign_name}</h5>
+            </Card.Header>
+            <Card.Body>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={revenueTimeline}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="revenue" stroke="#82ca9d" name="Ingresos (€)" />
+                </LineChart>
+              </ResponsiveContainer>
+            </Card.Body>
+          </Card>
+        </Col>
+        
+        <Col md={6}>
+          <Card>
+            <Card.Header>
+              <h5>Pernoctas Diarias - Campaña {overview?.campaign_name}</h5>
+            </Card.Header>
+            <Card.Body>
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={nightsTimeline}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" />
+                  <YAxis />
+                  <Tooltip />
+                  <Legend />
+                  <Line type="monotone" dataKey="nights" stroke="#8884d8" name="Pernoctas" />
+                </LineChart>
+              </ResponsiveContainer>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* ============================================================ */}
+      {/* NUEVOS GRÁFICOS: ANÁLISIS DE MÉTODOS DE PAGO POR PAÍS */}
+      {/* ============================================================ */}
       
-      {/* Ocupación Diaria Media (Gauge) */}
+      {/* ROW 1: 2 Gráficos grandes - Tipo de Pago */}
+      <Row className="mb-4">
+        <Col md={6}>
+          <Card>
+            <Card.Header>
+              <h5>Tipo de Pago - Campaña {overview?.campaign_name}</h5>
+            </Card.Header>
+            <Card.Body>
+              <ResponsiveContainer width="100%" height={300}>
+                <PieChart>
+                  <Pie
+                    data={paymentMethods}
+                    dataKey="count"
+                    nameKey="method"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={100}
+                    label
+                  >
+                    {paymentMethods.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+              <div className="text-center mt-2">
+                <small className="text-muted">Adelantado / Normal / SINPA</small>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+
+        <Col md={6}>
+          <Card>
+            <Card.Header>
+              <h5>Método de Pago - Campaña {overview?.campaign_name}</h5>
+            </Card.Header>
+            <Card.Body>
+              {paymentMethodsDetailed && (
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={[
+                        { name: 'Efectivo', value: paymentMethodsDetailed.totals.cash.count },
+                        { name: 'Tarjeta', value: paymentMethodsDetailed.totals.card.count },
+                        { name: 'Transferencia', value: paymentMethodsDetailed.totals.transfer.count }
+                      ]}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={100}
+                      label
+                    >
+                      <Cell fill="#28a745" />
+                      <Cell fill="#17a2b8" />
+                      <Cell fill="#007bff" />
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              )}
+              <div className="text-center mt-2">
+                <small className="text-muted">Efectivo / Tarjeta / Transferencia</small>
+              </div>
+            </Card.Body>
+          </Card>
+        </Col>
+      </Row>
+
+      {/* ROW 2: 5 Mini gráficos - Distribución por país */}
+      {paymentDistByCountry && (
+        <Row className="mb-4">
+          <Col md={12}>
+            <h5 className="text-center mb-3" style={{ color: '#666' }}>Distribución por País - Campaña {overview?.campaign_name}</h5>
+          </Col>
+
+          {/* Pago Adelantado */}
+          <Col md={2} className="mb-3">
+            <Card className="h-100">
+              <Card.Header className="text-center bg-primary text-white py-2">
+                <small><strong>Pago Adelantado</strong></small>
+              </Card.Header>
+              <Card.Body className="p-2">
+                {paymentDistByCountry.prepaid.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={150}>
+                    <PieChart>
+                      <Pie
+                        data={paymentDistByCountry.prepaid.slice(0, 5)}
+                        dataKey="count"
+                        nameKey="country"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={50}
+                        label={false}
+                      >
+                        {paymentDistByCountry.prepaid.slice(0, 5).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-center text-muted py-5">
+                    <small>Sin datos</small>
+                  </div>
+                )}
+                <div className="mt-2" style={{ fontSize: '0.7rem' }}>
+                  {paymentDistByCountry.prepaid.slice(0, 3).map((item, idx) => (
+                    <div key={idx} className="d-flex justify-content-between">
+                      <span style={{ color: COLORS[idx] }}>●</span>
+                      <span className="text-truncate mx-1">{item.country}</span>
+                      <strong>{item.count}</strong>
+                    </div>
+                  ))}
+                </div>
+              </Card.Body>
+            </Card>
+          </Col>
+
+          {/* Pago Normal */}
+          <Col md={2} className="mb-3">
+            <Card className="h-100">
+              <Card.Header className="text-center bg-success text-white py-2">
+                <small><strong>Pago Normal</strong></small>
+              </Card.Header>
+              <Card.Body className="p-2">
+                {paymentDistByCountry.normal.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={150}>
+                    <PieChart>
+                      <Pie
+                        data={paymentDistByCountry.normal.slice(0, 5)}
+                        dataKey="count"
+                        nameKey="country"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={50}
+                        label={false}
+                      >
+                        {paymentDistByCountry.normal.slice(0, 5).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-center text-muted py-5">
+                    <small>Sin datos</small>
+                  </div>
+                )}
+                <div className="mt-2" style={{ fontSize: '0.7rem' }}>
+                  {paymentDistByCountry.normal.slice(0, 3).map((item, idx) => (
+                    <div key={idx} className="d-flex justify-content-between">
+                      <span style={{ color: COLORS[idx] }}>●</span>
+                      <span className="text-truncate mx-1">{item.country}</span>
+                      <strong>{item.count}</strong>
+                    </div>
+                  ))}
+                </div>
+              </Card.Body>
+            </Card>
+          </Col>
+
+          {/* Efectivo */}
+          <Col md={3} className="mb-3">
+            <Card className="h-100">
+              <Card.Header className="text-center bg-success text-white py-2">
+                <small><strong>💵 Efectivo</strong></small>
+              </Card.Header>
+              <Card.Body className="p-2">
+                {paymentDistByCountry.cash.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={150}>
+                    <PieChart>
+                      <Pie
+                        data={paymentDistByCountry.cash.slice(0, 5)}
+                        dataKey="count"
+                        nameKey="country"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={50}
+                        label={false}
+                      >
+                        {paymentDistByCountry.cash.slice(0, 5).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-center text-muted py-5">
+                    <small>Sin datos</small>
+                  </div>
+                )}
+                <div className="mt-2" style={{ fontSize: '0.7rem' }}>
+                  {paymentDistByCountry.cash.slice(0, 3).map((item, idx) => (
+                    <div key={idx} className="d-flex justify-content-between">
+                      <span style={{ color: COLORS[idx] }}>●</span>
+                      <span className="text-truncate mx-1">{item.country}</span>
+                      <strong>{item.count}</strong>
+                    </div>
+                  ))}
+                </div>
+              </Card.Body>
+            </Card>
+          </Col>
+
+          {/* Tarjeta */}
+          <Col md={2} className="mb-3">
+            <Card className="h-100">
+              <Card.Header className="text-center bg-info text-white py-2">
+                <small><strong>💳 Tarjeta</strong></small>
+              </Card.Header>
+              <Card.Body className="p-2">
+                {paymentDistByCountry.card.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={150}>
+                    <PieChart>
+                      <Pie
+                        data={paymentDistByCountry.card.slice(0, 5)}
+                        dataKey="count"
+                        nameKey="country"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={50}
+                        label={false}
+                      >
+                        {paymentDistByCountry.card.slice(0, 5).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-center text-muted py-5">
+                    <small>Sin datos</small>
+                  </div>
+                )}
+                <div className="mt-2" style={{ fontSize: '0.7rem' }}>
+                  {paymentDistByCountry.card.slice(0, 3).map((item, idx) => (
+                    <div key={idx} className="d-flex justify-content-between">
+                      <span style={{ color: COLORS[idx] }}>●</span>
+                      <span className="text-truncate mx-1">{item.country}</span>
+                      <strong>{item.count}</strong>
+                    </div>
+                  ))}
+                </div>
+              </Card.Body>
+            </Card>
+          </Col>
+
+          {/* Transferencia */}
+          <Col md={3} className="mb-3">
+            <Card className="h-100">
+              <Card.Header className="text-center bg-primary text-white py-2">
+                <small><strong>🏦 Transferencia</strong></small>
+              </Card.Header>
+              <Card.Body className="p-2">
+                {paymentDistByCountry.transfer.length > 0 ? (
+                  <ResponsiveContainer width="100%" height={150}>
+                    <PieChart>
+                      <Pie
+                        data={paymentDistByCountry.transfer.slice(0, 5)}
+                        dataKey="count"
+                        nameKey="country"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={50}
+                        label={false}
+                      >
+                        {paymentDistByCountry.transfer.slice(0, 5).map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip />
+                    </PieChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="text-center text-muted py-5">
+                    <small>Sin datos</small>
+                  </div>
+                )}
+                <div className="mt-2" style={{ fontSize: '0.7rem' }}>
+                  {paymentDistByCountry.transfer.slice(0, 3).map((item, idx) => (
+                    <div key={idx} className="d-flex justify-content-between">
+                      <span style={{ color: COLORS[idx] }}>●</span>
+                      <span className="text-truncate mx-1">{item.country}</span>
+                      <strong>{item.count}</strong>
+                    </div>
+                  ))}
+                </div>
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      )}
+
+      {/* Tabla de Pagos Electrónicos - CAMPAÑA ACTUAL */}
+      {paymentMethodsDetailed && (
+        <Row className="mb-4">
+          <Col md={12}>
+            <Card>
+              <Card.Header>
+                <h5>Pagos Electrónicos - Campaña {overview?.campaign_name}</h5>
+              </Card.Header>
+              <Card.Body>
+                <Nav variant="tabs" className="mb-3">
+                  <Nav.Item>
+                    <Nav.Link 
+                      active={activePaymentTab === 'transfer'}
+                      onClick={() => setActivePaymentTab('transfer')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      🏦 Transferencias ({paymentMethodsDetailed.totals.transfer.count})
+                    </Nav.Link>
+                  </Nav.Item>
+                  <Nav.Item>
+                    <Nav.Link 
+                      active={activePaymentTab === 'card'}
+                      onClick={() => setActivePaymentTab('card')}
+                      style={{ cursor: 'pointer' }}
+                    >
+                      💳 Tarjeta ({paymentMethodsDetailed.totals.card.count})
+                    </Nav.Link>
+                  </Nav.Item>
+                </Nav>
+
+                {activePaymentTab === 'transfer' && (
+                  <>
+                    {paymentMethodsDetailed.transactions.transfer.length > 0 ? (
+                      <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                        <Table striped bordered hover responsive>
+                          <thead style={{ position: 'sticky', top: 0, backgroundColor: '#fff', zIndex: 1 }}>
+                            <tr>
+                              <th>Matrícula</th>
+                              <th>País</th>
+                              <th className="text-end">Importe</th>
+                              <th>Check-in</th>
+                              <th>Check-out</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {paymentMethodsDetailed.transactions.transfer.map((tx, index) => (
+                              <tr key={index}>
+                                <td><strong>{tx.license_plate}</strong></td>
+                                <td>{tx.country}</td>
+                                <td className="text-end text-success"><strong>{tx.amount.toFixed(2)} €</strong></td>
+                                <td>{tx.check_in_time ? new Date(tx.check_in_time).toLocaleString('es-ES') : 'N/A'}</td>
+                                <td>{tx.check_out_time ? new Date(tx.check_out_time).toLocaleString('es-ES') : 'N/A'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </div>
+                    ) : (
+                      <Alert variant="info">No hay pagos por transferencia registrados</Alert>
+                    )}
+                    <div className="mt-2 p-2 bg-light text-end">
+                      <strong>TOTAL: {paymentMethodsDetailed.totals.transfer.amount.toFixed(2)} €</strong>
+                    </div>
+                  </>
+                )}
+
+                {activePaymentTab === 'card' && (
+                  <>
+                    {paymentMethodsDetailed.transactions.card.length > 0 ? (
+                      <div style={{ maxHeight: '500px', overflowY: 'auto' }}>
+                        <Table striped bordered hover responsive>
+                          <thead style={{ position: 'sticky', top: 0, backgroundColor: '#fff', zIndex: 1 }}>
+                            <tr>
+                              <th>Matrícula</th>
+                              <th>País</th>
+                              <th className="text-end">Importe</th>
+                              <th>Check-in</th>
+                              <th>Check-out</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {paymentMethodsDetailed.transactions.card.map((tx, index) => (
+                              <tr key={index}>
+                                <td><strong>{tx.license_plate}</strong></td>
+                                <td>{tx.country}</td>
+                                <td className="text-end text-info"><strong>{tx.amount.toFixed(2)} €</strong></td>
+                                <td>{tx.check_in_time ? new Date(tx.check_in_time).toLocaleString('es-ES') : 'N/A'}</td>
+                                <td>{tx.check_out_time ? new Date(tx.check_out_time).toLocaleString('es-ES') : 'N/A'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </Table>
+                      </div>
+                    ) : (
+                      <Alert variant="info">No hay pagos con tarjeta registrados</Alert>
+                    )}
+                    <div className="mt-2 p-2 bg-light text-end">
+                      <strong>TOTAL: {paymentMethodsDetailed.totals.card.amount.toFixed(2)} €</strong>
+                    </div>
+                  </>
+                )}
+              </Card.Body>
+            </Card>
+          </Col>
+        </Row>
+      )}
+
+      {/* SEPARADOR VISUAL */}
+      <hr style={{ margin: '3rem 0', border: '2px solid #ddd' }} />
+      <h2 className="text-center mb-4" style={{ color: '#666' }}>📈 Estadísticas Globales (Histórico Completo)</h2>
+
+      {/* Ocupación Diaria Media con Check-ins Timeline - GLOBAL */}
       {dailyOccupancy && (
         <Row className="mb-4">
           <Col md={12}>
             <Card>
               <Card.Header className="bg-primary text-white">
-                <h5 className="mb-0">📊 Ocupación Diaria Media (Hoy: {dailyOccupancy.date})</h5>
+                <h5 className="mb-0">Ocupación y Tendencia de Check-ins</h5>
               </Card.Header>
               <Card.Body>
                 <Row className="align-items-center">
+                  {/* Gauge - Izquierda */}
                   <Col md={4} className="text-center">
                     <div style={{ position: 'relative', width: '200px', height: '200px', margin: '0 auto' }}>
                       <svg viewBox="0 0 200 200" style={{ transform: 'rotate(-90deg)' }}>
@@ -381,36 +844,48 @@ function Analytics() {
                       </div>
                     </div>
                     <p className="text-muted mt-3 mb-0">
-                      <strong>{dailyOccupancy.total_occupied}</strong> de <strong>{dailyOccupancy.total_available}</strong> plazas ocupadas
+                      <strong>{dailyOccupancy.total_occupied}</strong> de <strong>{dailyOccupancy.total_available}</strong> plazas
                     </p>
-                    <small className="text-muted">Promedio histórico para este día</small>
+                    <small className="text-muted">Promedio histórico para {dailyOccupancy.date}</small>
                   </Col>
+
+                  {/* Gráfico Check-ins - Derecha */}
                   <Col md={8}>
-                    <h6 className="text-muted mb-3">Desglose por Tipo de Plaza:</h6>
-                    <Table bordered size="sm">
-                      <thead>
-                        <tr>
-                          <th>Tipo</th>
-                          <th className="text-center">Ocupadas</th>
-                          <th className="text-center">Total</th>
-                          <th className="text-center">%</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {Object.entries(dailyOccupancy.by_type).map(([type, data]) => (
-                          <tr key={type}>
-                            <td><strong>{type}</strong></td>
-                            <td className="text-center">{data.occupied}</td>
-                            <td className="text-center">{data.total}</td>
-                            <td className="text-center">
-                              <strong style={{ color: data.percentage > 80 ? '#dc3545' : data.percentage > 50 ? '#ffc107' : '#28a745' }}>
-                                {data.percentage}%
-                              </strong>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </Table>
+                    <h6 className="text-muted mb-3">Check-ins: 7 días atrás + Hoy + 7 días adelante</h6>
+                    
+                    {checkinsTimeline ? (
+                      <ResponsiveContainer width="100%" height={250}>
+                        <BarChart data={checkinsTimeline.timeline}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis 
+                            dataKey="day_label" 
+                            tick={{ fontSize: 12 }}
+                          />
+                          <YAxis />
+                          <Tooltip 
+                            labelFormatter={(label) => `Día: ${label}`}
+                            formatter={(value) => [`${value} check-ins`, '']}
+                          />
+                          <Bar 
+                            dataKey="checkins" 
+                            shape={(props) => {
+                              const { x, y, width, height, payload } = props;
+                              const fill = payload.is_today ? '#ff8042' : '#8884d8';
+                              return <rect x={x} y={y} width={width} height={height} fill={fill} />;
+                            }}
+                          />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="text-center py-5">
+                        <Spinner animation="border" size="sm" />
+                        <p className="text-muted mt-2">Cargando check-ins...</p>
+                      </div>
+                    )}
+                    
+                    <small className="text-muted d-block text-center mt-2">
+                      🟠 = Hoy | 🔵 = Otros días
+                    </small>
                   </Col>
                 </Row>
               </Card.Body>
@@ -419,7 +894,7 @@ function Analytics() {
         </Row>
       )}
 
-      {/* Análisis de Ocupación por Período */}
+      {/* Análisis de Ocupación por Período - GLOBAL */}
       <Row className="mb-4">
         <Col md={12}>
           <Card>
@@ -599,50 +1074,7 @@ function Analytics() {
         </Col>
       </Row>
 
-      {/* Gráficos de Línea: Ingresos y Pernoctas */}
-      <Row className="mb-4">
-        <Col md={6}>
-          <Card>
-            <Card.Header>
-              <h5>Ingresos Diarios (últimos {timeRange} días)</h5>
-            </Card.Header>
-            <Card.Body>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={revenueTimeline}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="revenue" stroke="#82ca9d" name="Ingresos (€)" />
-                </LineChart>
-              </ResponsiveContainer>
-            </Card.Body>
-          </Card>
-        </Col>
-        
-        <Col md={6}>
-          <Card>
-            <Card.Header>
-              <h5>Pernoctas Diarias (últimos {timeRange} días)</h5>
-            </Card.Header>
-            <Card.Body>
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={nightsTimeline}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" />
-                  <YAxis />
-                  <Tooltip />
-                  <Legend />
-                  <Line type="monotone" dataKey="nights" stroke="#8884d8" name="Pernoctas" />
-                </LineChart>
-              </ResponsiveContainer>
-            </Card.Body>
-          </Card>
-        </Col>
-      </Row>
-
-      {/* Distribución por País con Tabla Detallada */}
+      {/* Distribución por País - GLOBAL */}
       <Row className="mb-4">
         <Col md={12}>
           <Card>
@@ -690,9 +1122,9 @@ function Analytics() {
         </Col>
       </Row>
 
-      {/* Distribución de Estancias por Duración y Métodos de Pago */}
+      {/* Distribución de Estancias por Duración - GLOBAL */}
       <Row className="mb-4">
-        <Col md={6}>
+        <Col md={12}>
           <Card>
             <Card.Header>
               <h5>Distribución de Estancias por Duración</h5>
@@ -711,149 +1143,9 @@ function Analytics() {
             </Card.Body>
           </Card>
         </Col>
-
-        <Col md={6}>
-          <Card>
-            <Card.Header>
-              <h5>Métodos de Pago</h5>
-            </Card.Header>
-            <Card.Body>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={paymentMethods}
-                    dataKey="count"
-                    nameKey="method"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={100}
-                    label
-                  >
-                    {paymentMethods.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </Card.Body>
-          </Card>
-        </Col>
       </Row>
 
-      {/* Tabla de Transacciones Electrónicas con Pestañas */}
-      {paymentMethodsDetailed && (
-        <Row className="mb-4">
-          <Col md={12}>
-            <Card>
-              <Card.Header>
-                <h5>Pagos Electrónicos</h5>
-              </Card.Header>
-              <Card.Body>
-                <Nav variant="tabs" className="mb-3">
-                  <Nav.Item>
-                    <Nav.Link 
-                      active={activePaymentTab === 'transfer'}
-                      onClick={() => setActivePaymentTab('transfer')}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      🏦 Transferencias ({paymentMethodsDetailed.totals.transfer.count})
-                    </Nav.Link>
-                  </Nav.Item>
-                  <Nav.Item>
-                    <Nav.Link 
-                      active={activePaymentTab === 'card'}
-                      onClick={() => setActivePaymentTab('card')}
-                      style={{ cursor: 'pointer' }}
-                    >
-                      💳 Tarjeta ({paymentMethodsDetailed.totals.card.count})
-                    </Nav.Link>
-                  </Nav.Item>
-                </Nav>
-
-                {activePaymentTab === 'transfer' && (
-                  <>
-                    {paymentMethodsDetailed.transactions.transfer.length > 0 ? (
-                      <Table striped bordered hover responsive>
-                        <thead>
-                          <tr>
-                            <th>Matrícula</th>
-                            <th>País</th>
-                            <th className="text-end">Importe</th>
-                            <th>Check-in</th>
-                            <th>Check-out</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {paymentMethodsDetailed.transactions.transfer.map((tx, index) => (
-                            <tr key={index}>
-                              <td><strong>{tx.license_plate}</strong></td>
-                              <td>{tx.country}</td>
-                              <td className="text-end text-success"><strong>{tx.amount.toFixed(2)} €</strong></td>
-                              <td>{tx.check_in_time ? new Date(tx.check_in_time).toLocaleString('es-ES') : 'N/A'}</td>
-                              <td>{tx.check_out_time ? new Date(tx.check_out_time).toLocaleString('es-ES') : 'N/A'}</td>
-                            </tr>
-                          ))}
-                          <tr style={{ backgroundColor: '#f8f9fa', fontWeight: 'bold' }}>
-                            <td colSpan="2" className="text-end">TOTAL:</td>
-                            <td className="text-end text-success">
-                              {paymentMethodsDetailed.totals.transfer.amount.toFixed(2)} €
-                            </td>
-                            <td colSpan="2"></td>
-                          </tr>
-                        </tbody>
-                      </Table>
-                    ) : (
-                      <Alert variant="info">No hay pagos por transferencia registrados</Alert>
-                    )}
-                  </>
-                )}
-
-                {activePaymentTab === 'card' && (
-                  <>
-                    {paymentMethodsDetailed.transactions.card.length > 0 ? (
-                      <Table striped bordered hover responsive>
-                        <thead>
-                          <tr>
-                            <th>Matrícula</th>
-                            <th>País</th>
-                            <th className="text-end">Importe</th>
-                            <th>Check-in</th>
-                            <th>Check-out</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {paymentMethodsDetailed.transactions.card.map((tx, index) => (
-                            <tr key={index}>
-                              <td><strong>{tx.license_plate}</strong></td>
-                              <td>{tx.country}</td>
-                              <td className="text-end text-info"><strong>{tx.amount.toFixed(2)} €</strong></td>
-                              <td>{tx.check_in_time ? new Date(tx.check_in_time).toLocaleString('es-ES') : 'N/A'}</td>
-                              <td>{tx.check_out_time ? new Date(tx.check_out_time).toLocaleString('es-ES') : 'N/A'}</td>
-                            </tr>
-                          ))}
-                          <tr style={{ backgroundColor: '#f8f9fa', fontWeight: 'bold' }}>
-                            <td colSpan="2" className="text-end">TOTAL:</td>
-                            <td className="text-end text-info">
-                              {paymentMethodsDetailed.totals.card.amount.toFixed(2)} €
-                            </td>
-                            <td colSpan="2"></td>
-                          </tr>
-                        </tbody>
-                      </Table>
-                    ) : (
-                      <Alert variant="info">No hay pagos con tarjeta registrados</Alert>
-                    )}
-                  </>
-                )}
-              </Card.Body>
-            </Card>
-          </Col>
-        </Row>
-      )}
-
-      {/* Horas Pico y Días de la Semana */}
+      {/* Horas Pico y Días de la Semana - GLOBAL */}
       <Row className="mb-4">
         <Col md={6}>
           <Card>
@@ -893,7 +1185,7 @@ function Analytics() {
         </Col>
       </Row>
 
-      {/* Panel de Vehículos Propios vs Alquiler */}
+      {/* Panel de Vehículos Propios vs Alquiler - GLOBAL */}
       {rentalVsOwned && (
         <Row className="mb-4">
           <Col md={12}>
@@ -949,10 +1241,7 @@ function Analytics() {
         </Row>
       )}
 
-      {/* ============================================================ */}
-      {/* NUEVA SECCIÓN: RENDIMIENTO POR USUARIO */}
-      {/* ============================================================ */}
-      
+      {/* Rendimiento por Usuario - GLOBAL */}
       {userPerformance && (
         <Row className="mb-4">
           <Col md={12}>
@@ -961,7 +1250,6 @@ function Analytics() {
                 <h5 className="mb-0">Rendimiento por Usuario</h5>
               </Card.Header>
               <Card.Body>
-                {/* Filtros de tiempo */}
                 <Row className="mb-3">
                   <Col md={12} className="mb-2">
                     <ButtonGroup>
@@ -993,7 +1281,6 @@ function Analytics() {
                   </Col>
                 </Row>
 
-                {/* Rango personalizado */}
                 <Row className="mb-3">
                   <Col md={4}>
                     <Form.Group>
@@ -1033,7 +1320,6 @@ function Analytics() {
                   </Col>
                 </Row>
 
-                {/* Info del período */}
                 <Alert variant="info">
                   <Row>
                     <Col md={6}>
@@ -1052,7 +1338,6 @@ function Analytics() {
                   </Row>
                 </Alert>
 
-                {/* Top Performers */}
                 {userPerformance.top_performers.general && (
                   <Alert variant="success">
                     <Row>
@@ -1066,7 +1351,6 @@ function Analytics() {
                   </Alert>
                 )}
 
-                {/* Tabla de rendimiento */}
                 <div style={{ overflowX: 'auto' }}>
                   <Table striped bordered hover responsive size="sm">
                     <thead style={{ backgroundColor: '#f8f9fa' }}>
@@ -1079,18 +1363,14 @@ function Analytics() {
                         <th colSpan="3" className="text-center" style={{ backgroundColor: '#fff3cd' }}>Totales</th>
                       </tr>
                       <tr>
-                        {/* Estancias */}
                         <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Check-ins</th>
                         <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Manuales</th>
                         <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Descartados</th>
-                        {/* Pagos */}
                         <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Check-outs</th>
                         <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Prepagos</th>
                         <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Extensión</th>
-                        {/* Caja */}
                         <th className="text-center" style={{ backgroundColor: '#cfe2ff' }}>Abre</th>
                         <th className="text-center" style={{ backgroundColor: '#cfe2ff' }}>Cierre</th>
-                        {/* Totales */}
                         <th className="text-center" style={{ backgroundColor: '#fff3cd' }}>Total Acción</th>
                         <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Acciones Pago</th>
                         <th className="text-center" style={{ backgroundColor: '#d1f2eb' }}>Ingresos €</th>
@@ -1100,20 +1380,15 @@ function Analytics() {
                       {userPerformance.users.map((user, index) => (
                         <tr key={index}>
                           <td><strong>{user.username}</strong></td>
-                          {/* Estancias */}
                           <td className="text-center">{user.checkins}</td>
                           <td className="text-center">{user.manual_entries}</td>
                           <td className="text-center">{user.discarded}</td>
-                          {/* Pagos */}
                           <td className="text-center">{user.checkouts}</td>
                           <td className="text-center">{user.prepayments}</td>
                           <td className="text-center">{user.extensions}</td>
-                          {/* Caja */}
                           <td className="text-center">{user.cash_opened}</td>
                           <td className="text-center">{user.cash_closed}</td>
-                          {/* SINPA */}
                           <td className="text-center text-danger"><strong>{user.sinpas}</strong></td>
-                          {/* Totales */}
                           <td className="text-center" style={{ backgroundColor: '#fff3cd' }}>
                             <strong>{user.total_actions}</strong>
                           </td>
@@ -1129,10 +1404,6 @@ function Analytics() {
                   </Table>
                 </div>
 
-                {/* ============================================================ */}
-                {/* NUEVA TABLA: DESGLOSE POR MÉTODO DE PAGO */}
-                {/* ============================================================ */}
-                
                 <hr className="my-4" />
                 
                 <h5 className="mb-3">💳 Desglose por Método de Pago</h5>
@@ -1148,13 +1419,10 @@ function Analytics() {
                         <th rowSpan="2" className="text-center" style={{ backgroundColor: '#fff3cd', verticalAlign: 'middle' }}>Total €</th>
                       </tr>
                       <tr>
-                        {/* Efectivo */}
                         <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Count</th>
                         <th className="text-center" style={{ backgroundColor: '#d4edda' }}>Importe</th>
-                        {/* Tarjeta */}
                         <th className="text-center" style={{ backgroundColor: '#cfe2ff' }}>Count</th>
                         <th className="text-center" style={{ backgroundColor: '#cfe2ff' }}>Importe</th>
-                        {/* Transferencia */}
                         <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Count</th>
                         <th className="text-center" style={{ backgroundColor: '#d1ecf1' }}>Importe</th>
                       </tr>
@@ -1163,22 +1431,18 @@ function Analytics() {
                       {userPerformance.users.map((user, index) => (
                         <tr key={index}>
                           <td><strong>{user.username}</strong></td>
-                          {/* Efectivo */}
                           <td className="text-center">{user.payment_methods.cash.count}</td>
                           <td className="text-center text-success">
                             <strong>{user.payment_methods.cash.amount.toFixed(2)} €</strong>
                           </td>
-                          {/* Tarjeta */}
                           <td className="text-center">{user.payment_methods.card.count}</td>
                           <td className="text-center text-primary">
                             <strong>{user.payment_methods.card.amount.toFixed(2)} €</strong>
                           </td>
-                          {/* Transferencia */}
                           <td className="text-center">{user.payment_methods.transfer.count}</td>
                           <td className="text-center text-info">
                             <strong>{user.payment_methods.transfer.amount.toFixed(2)} €</strong>
                           </td>
-                          {/* Total */}
                           <td className="text-center" style={{ backgroundColor: '#fff3cd' }}>
                             <strong>{user.revenue.toFixed(2)} €</strong>
                           </td>

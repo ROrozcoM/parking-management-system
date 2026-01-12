@@ -34,6 +34,25 @@ async def get_active_session(
     summary = crud.get_cash_session_summary(db, session.id)
     return summary
 
+@router.get("/last-closing")
+async def get_last_closing(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """Obtiene el importe del último cierre de caja para sugerir como inicial"""
+    last_session = db.query(models.CashSession).filter(
+        models.CashSession.closed_at.isnot(None)
+    ).order_by(models.CashSession.closed_at.desc()).first()
+    
+    if not last_session:
+        return {"last_closing_amount": None}
+    
+    return {
+        "last_closing_amount": last_session.remaining_in_register,
+        "closed_at": last_session.closed_at.isoformat(),
+        "closed_by": last_session.closed_by_user_id
+    }
+
 @router.get("/pre-close-info", response_model=schemas.CashSessionPreCloseInfo)
 async def get_pre_close_info_endpoint(
     suggested_change: float = 300.0,

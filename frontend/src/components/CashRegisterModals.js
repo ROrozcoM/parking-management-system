@@ -2,9 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { Modal, Button, Form, Alert, Badge } from 'react-bootstrap';
 
 // Modal para abrir caja
-function OpenCashModal({ show, onHide, onOpen }) {
+function OpenCashModal({ show, onHide, onOpen, lastClosingAmount }) {
   const [initialAmount, setInitialAmount] = useState('100');
   const [loading, setLoading] = useState(false);
+
+  // ← NUEVO: Auto-rellenar con último cierre cuando se abre el modal
+  useEffect(() => {
+    if (show && lastClosingAmount !== null) {
+      setInitialAmount(lastClosingAmount.toFixed(2));
+    }
+  }, [show, lastClosingAmount]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -22,6 +29,15 @@ function OpenCashModal({ show, onHide, onOpen }) {
         <Modal.Title>🔓 Abrir Caja</Modal.Title>
       </Modal.Header>
       <Modal.Body>
+        {/* ← NUEVO: Mensaje informativo */}
+        {lastClosingAmount !== null && (
+          <Alert variant="info" className="mb-3">
+            💡 <strong>Última caja cerrada con:</strong> {lastClosingAmount.toFixed(2)} €
+            <br />
+            <small className="text-muted">Este valor se ha rellenado automáticamente</small>
+          </Alert>
+        )}
+
         <Form onSubmit={handleSubmit}>
           <Form.Group className="mb-3">
             <Form.Label>Importe inicial en caja (€)</Form.Label>

@@ -21,13 +21,13 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
   // Función para obtener precio por noche según tipo de plaza
   const getPricePerNight = (spotType) => {
     const prices = {
-      'A': 10,
-      'B': 12,
-      'CB': 12,
-      'C': 16,
-      'CPLUS': 32
+      'A': 12,      // ← Antes 10
+      'B': 14,      // ← Antes 12
+      'CB': 14,     // ← Antes 12
+      'C': 18,      // ← Antes 16
+      'CPLUS': 36   // ← Antes 32
     };
-    return prices[spotType] || 10; // Default 10€ si no se encuentra
+    return prices[spotType] || 12; // Default 12€ si no se encuentra
   };
 
   useEffect(() => {

@@ -401,14 +401,24 @@ async def analytics_payment_methods_detailed(
     db: Session = Depends(get_db),
     current_user: models.User = Depends(get_current_admin_user)
 ):
-    """Desglose detallado de métodos de pago desde transacciones de caja"""
+    """Desglose detallado de métodos de pago DE LA CAMPAÑA ACTUAL"""
+    from app.utils import get_current_campaign_dates
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
     
-    # Obtener todas las transacciones de caja (CHECKOUT y PREPAYMENT)
+    # ← NUEVO: Obtener fechas de campaña
+    campaign = get_current_campaign_dates()
+    start_date = datetime.combine(campaign["start_date"], datetime.min.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    end_date = datetime.combine(campaign["end_date"], datetime.max.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    
+    # Obtener transacciones DE LA CAMPAÑA
     transactions = db.query(models.CashTransaction).filter(
         models.CashTransaction.transaction_type.in_([
             models.TransactionType.CHECKOUT,
             models.TransactionType.PREPAYMENT
-        ])
+        ]),
+        models.CashTransaction.timestamp >= start_date,
+        models.CashTransaction.timestamp <= end_date
     ).all()
     
     # Calcular totales por método
@@ -517,3 +527,24 @@ async def analytics_user_performance(
     """Rendimiento por usuario con filtros opcionales de fecha"""
     from app.crud import get_user_performance
     return get_user_performance(db, start_date, end_date)
+
+
+@app.get("/api/analytics/checkins-around-today")
+async def analytics_checkins_around_today(
+    days_before: int = 7,
+    days_after: int = 7,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user)
+):
+    """Check-ins diarios: 7 días antes de hoy + hoy + 7 días después"""
+    from app.crud import get_checkins_around_today
+    return get_checkins_around_today(db, days_before, days_after)
+
+@app.get("/api/analytics/payment-distribution-by-country")
+async def analytics_payment_distribution_by_country(
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_admin_user)
+):
+    """Distribución por país para cada tipo de pago (campaña actual)"""
+    from app.crud import get_payment_distribution_by_country
+    return get_payment_distribution_by_country(db)

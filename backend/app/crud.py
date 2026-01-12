@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import func, and_
+from sqlalchemy import func, and_, or_, text, desc, asc
 from app import models, schemas
 from typing import List, Optional
 from datetime import datetime
@@ -10,6 +10,8 @@ import os
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from app.utils import get_current_campaign_dates
+
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -842,32 +844,45 @@ from datetime import datetime, timedelta
 
 def get_analytics_overview(db: Session):
     """
-    Obtiene un resumen general de analytics
+    Obtiene un resumen general de analytics DE LA CAMPAÑA ACTUAL
     """
-    # Total de estancias completadas
+    # Obtener fechas de campaña
+    campaign = get_current_campaign_dates()
+    start_date = datetime.combine(campaign["start_date"], datetime.min.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    end_date = datetime.combine(campaign["end_date"], datetime.max.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    
+    # Total de estancias completadas EN LA CAMPAÑA
     total_stays = db.query(models.Stay).filter(
-        models.Stay.status == models.StayStatus.COMPLETED
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Stay.check_out_time >= start_date,
+        models.Stay.check_out_time <= end_date
     ).count()
     
-    # Ingresos totales (desde transacciones de caja)
+    # Ingresos totales DE LA CAMPAÑA (desde transacciones de caja)
     total_revenue = db.query(func.sum(models.CashTransaction.amount_paid)).filter(
         models.CashTransaction.transaction_type.in_([
             models.TransactionType.CHECKOUT,
-            models.TransactionType.PREPAYMENT
-        ])
+            models.TransactionType.PREPAYMENT,
+        ]),
+        models.CashTransaction.timestamp >= start_date,
+        models.CashTransaction.timestamp <= end_date
     ).scalar() or 0.0
     
-    # Total SINPAS
+    # Total SINPAS DE LA CAMPAÑA
     total_sinpas = db.query(models.Blacklist).filter(
-        models.Blacklist.resolved == False
+        models.Blacklist.resolved == False,
+        models.Blacklist.incident_date  >= start_date,
+        models.Blacklist.incident_date  <= end_date
     ).count()
     
-    # Deuda pendiente de SINPAS
+    # Deuda pendiente de SINPAS DE LA CAMPAÑA
     debt_sinpas = db.query(func.sum(models.Blacklist.amount_owed)).filter(
-        models.Blacklist.resolved == False
+        models.Blacklist.resolved == False,
+        models.Blacklist.incident_date  >= start_date,
+        models.Blacklist.incident_date  <= end_date
     ).scalar() or 0.0
     
-    # Vehículos activos ahora
+    # Vehículos activos ahora (este sí es global, no de campaña)
     active_now = db.query(models.Stay).filter(
         models.Stay.status == models.StayStatus.ACTIVE
     ).count()
@@ -877,22 +892,27 @@ def get_analytics_overview(db: Session):
         "total_revenue": float(total_revenue),
         "total_sinpas": total_sinpas,
         "debt_sinpas": float(debt_sinpas),
-        "active_now": active_now
+        "active_now": active_now,
+        "campaign_name": campaign["campaign_name"]  # ← NUEVO
     }
 
 
 def get_revenue_timeline(db: Session, days: int = 30):
     """
-    Obtiene ingresos diarios de los últimos X días
+    Obtiene ingresos diarios DE LA CAMPAÑA ACTUAL
+    El parámetro 'days' se ignora, ahora usa toda la campaña
     """
-    cutoff_date = datetime.now(ZoneInfo("Europe/Madrid")) - timedelta(days=days)
+    campaign = get_current_campaign_dates()
+    start_date = datetime.combine(campaign["start_date"], datetime.min.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    end_date = datetime.combine(campaign["end_date"], datetime.max.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
     
     results = db.query(
         func.date(models.Stay.check_out_time).label('date'),
         func.sum(models.Stay.final_price).label('revenue')
     ).filter(
         models.Stay.status == models.StayStatus.COMPLETED,
-        models.Stay.check_out_time >= cutoff_date,
+        models.Stay.check_out_time >= start_date,
+        models.Stay.check_out_time <= end_date,
         models.Stay.final_price.isnot(None)
     ).group_by(
         func.date(models.Stay.check_out_time)
@@ -982,28 +1002,44 @@ def get_vehicle_types_distribution(db: Session):
 
 def get_payment_methods_distribution(db: Session):
     """
-    Distribución de métodos de pago (prepago vs normal)
+    Distribución de métodos de pago DE LA CAMPAÑA ACTUAL
+    Incluye: Pago Adelantado, Pago Normal, Extensión, SINPA
     """
+    campaign = get_current_campaign_dates()
+    start_date = datetime.combine(campaign["start_date"], datetime.min.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    end_date = datetime.combine(campaign["end_date"], datetime.max.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    
+    # Prepagos
     prepaid = db.query(func.count(models.Stay.id)).filter(
         models.Stay.status == models.StayStatus.COMPLETED,
-        models.Stay.payment_status == models.PaymentStatus.PREPAID
+        models.Stay.payment_status == models.PaymentStatus.PREPAID,
+        models.Stay.check_out_time >= start_date,
+        models.Stay.check_out_time <= end_date
     ).scalar() or 0
     
+    # Pagos normales
     normal = db.query(func.count(models.Stay.id)).filter(
         models.Stay.status == models.StayStatus.COMPLETED,
-        models.Stay.payment_status == models.PaymentStatus.PAID
+        models.Stay.payment_status == models.PaymentStatus.PAID,
+        models.Stay.check_out_time >= start_date,
+        models.Stay.check_out_time <= end_date
     ).scalar() or 0
     
+    # SINPAs
     unpaid = db.query(func.count(models.Stay.id)).filter(
         models.Stay.status == models.StayStatus.COMPLETED,
-        models.Stay.payment_status == models.PaymentStatus.UNPAID
+        models.Stay.payment_status == models.PaymentStatus.UNPAID,
+        models.Stay.check_out_time >= start_date,
+        models.Stay.check_out_time <= end_date
     ).scalar() or 0
+
     
     return [
         {"method": "Pago Adelantado", "count": prepaid},
         {"method": "Pago Normal", "count": normal},
         {"method": "SINPA", "count": unpaid}
     ]
+
 
 
 def get_average_stay_duration_by_country(db: Session):
@@ -1094,24 +1130,32 @@ def get_weekday_distribution(db: Session):
 
 def get_total_nights(db: Session):
     """
-    Obtiene el total de pernoctas y el promedio por estancia
+    Obtiene el total de pernoctas y el promedio por estancia DE LA CAMPAÑA ACTUAL
     """
-    # Total de pernoctas
+    campaign = get_current_campaign_dates()
+    start_date = datetime.combine(campaign["start_date"], datetime.min.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    end_date = datetime.combine(campaign["end_date"], datetime.max.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    
+    # Total de pernoctas DE LA CAMPAÑA
     total_nights_result = db.query(
         func.sum(
             func.extract('epoch', models.Stay.check_out_time - models.Stay.check_in_time) / 86400
         ).label('total_nights')
     ).filter(
         models.Stay.status == models.StayStatus.COMPLETED,
+        models.Stay.check_out_time >= start_date,
+        models.Stay.check_out_time <= end_date,
         models.Stay.check_in_time.isnot(None),
         models.Stay.check_out_time.isnot(None)
     ).scalar()
     
     total_nights = int(total_nights_result or 0)
     
-    # Número total de estancias
+    # Número total de estancias DE LA CAMPAÑA
     total_stays = db.query(func.count(models.Stay.id)).filter(
         models.Stay.status == models.StayStatus.COMPLETED,
+        models.Stay.check_out_time >= start_date,
+        models.Stay.check_out_time <= end_date,
         models.Stay.check_in_time.isnot(None),
         models.Stay.check_out_time.isnot(None)
     ).scalar() or 0
@@ -1127,9 +1171,12 @@ def get_total_nights(db: Session):
 
 def get_nights_timeline(db: Session, days: int = 30):
     """
-    Obtiene el número de pernoctas por día en los últimos X días
+    Obtiene el número de pernoctas por día DE LA CAMPAÑA ACTUAL
+    El parámetro 'days' se ignora, ahora usa toda la campaña
     """
-    cutoff_date = datetime.now(ZoneInfo("Europe/Madrid")) - timedelta(days=days)
+    campaign = get_current_campaign_dates()
+    start_date = datetime.combine(campaign["start_date"], datetime.min.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    end_date = datetime.combine(campaign["end_date"], datetime.max.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
     
     results = db.query(
         func.date(models.Stay.check_out_time).label('date'),
@@ -1138,7 +1185,8 @@ def get_nights_timeline(db: Session, days: int = 30):
         ).label('nights')
     ).filter(
         models.Stay.status == models.StayStatus.COMPLETED,
-        models.Stay.check_out_time >= cutoff_date,
+        models.Stay.check_out_time >= start_date,
+        models.Stay.check_out_time <= end_date,
         models.Stay.check_in_time.isnot(None),
         models.Stay.check_out_time.isnot(None)
     ).group_by(
@@ -1152,6 +1200,7 @@ def get_nights_timeline(db: Session, days: int = 30):
         }
         for r in results
     ]
+
 
 
 def get_stay_length_distribution(db: Session):
@@ -1333,6 +1382,146 @@ def get_rental_vs_owned_distribution(db: Session):
         "total": total,
         "rental_percentage": round((rental_stays / total * 100) if total > 0 else 0, 1),
         "owned_percentage": round((owned_stays / total * 100) if total > 0 else 0, 1)
+    }
+
+
+def get_checkins_around_today(db: Session, days_before: int = 7, days_after: int = 7):
+    """
+    Obtiene check-ins por día en un rango alrededor de hoy
+    """
+    from datetime import datetime, timedelta
+    from zoneinfo import ZoneInfo
+    
+    today = datetime.now(ZoneInfo("Europe/Madrid")).date()
+    start_date = today - timedelta(days=days_before)
+    end_date = today + timedelta(days=days_after)
+    
+    # Contar check-ins por día
+    results = db.query(
+        func.date(models.Stay.check_in_time).label('date'),
+        func.count(models.Stay.id).label('checkins')
+    ).filter(
+        func.date(models.Stay.check_in_time) >= start_date,
+        func.date(models.Stay.check_in_time) <= end_date
+    ).group_by(
+        func.date(models.Stay.check_in_time)
+    ).order_by('date').all()
+    
+    # Crear lista completa con días sin check-ins = 0
+    data = []
+    current = start_date
+    results_dict = {r.date: r.checkins for r in results}
+    
+    while current <= end_date:
+        is_today = (current == today)
+        data.append({
+            "date": current.strftime("%Y-%m-%d"),
+            "day_label": current.strftime("%d/%m"),
+            "checkins": results_dict.get(current, 0),
+            "is_today": is_today
+        })
+        current += timedelta(days=1)
+    
+    return {
+        "timeline": data,
+        "today": today.strftime("%Y-%m-%d")
+    }
+
+def get_payment_distribution_by_country(db: Session):
+    """
+    Obtiene distribución por país para cada tipo de pago DE LA CAMPAÑA ACTUAL
+    """
+    from app.utils import get_current_campaign_dates
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+    
+    campaign = get_current_campaign_dates()
+    start_date = datetime.combine(campaign["start_date"], datetime.min.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    end_date = datetime.combine(campaign["end_date"], datetime.max.time()).replace(tzinfo=ZoneInfo("Europe/Madrid"))
+    
+    # 1. Pago adelantado por país
+    prepaid_query = db.query(
+        models.Vehicle.country,
+        func.count(models.Stay.id).label('count')
+    ).join(models.Stay).filter(
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Stay.payment_status == models.PaymentStatus.PREPAID,
+        models.Stay.check_out_time >= start_date,
+        models.Stay.check_out_time <= end_date
+    ).group_by(models.Vehicle.country).all()
+    
+    # 2. Pago normal por país
+    normal_query = db.query(
+        models.Vehicle.country,
+        func.count(models.Stay.id).label('count')
+    ).join(models.Stay).filter(
+        models.Stay.status == models.StayStatus.COMPLETED,
+        models.Stay.payment_status == models.PaymentStatus.PAID,
+        models.Stay.check_out_time >= start_date,
+        models.Stay.check_out_time <= end_date
+    ).group_by(models.Vehicle.country).all()
+    
+    # 3. Efectivo por país (desde transacciones)
+    cash_query = db.query(
+        models.Vehicle.country,
+        func.count(models.CashTransaction.id).label('count')
+    ).join(models.Stay, models.Stay.id == models.CashTransaction.stay_id).join(
+        models.Vehicle, models.Vehicle.id == models.Stay.vehicle_id
+    ).filter(
+        models.CashTransaction.transaction_type.in_([
+            models.TransactionType.CHECKOUT,
+            models.TransactionType.PREPAYMENT
+        ]),
+        models.CashTransaction.payment_method == models.PaymentMethod.CASH,
+        models.CashTransaction.timestamp >= start_date,
+        models.CashTransaction.timestamp <= end_date
+    ).group_by(models.Vehicle.country).all()
+    
+    # 4. Tarjeta por país
+    card_query = db.query(
+        models.Vehicle.country,
+        func.count(models.CashTransaction.id).label('count')
+    ).join(models.Stay, models.Stay.id == models.CashTransaction.stay_id).join(
+        models.Vehicle, models.Vehicle.id == models.Stay.vehicle_id
+    ).filter(
+        models.CashTransaction.transaction_type.in_([
+            models.TransactionType.CHECKOUT,
+            models.TransactionType.PREPAYMENT
+        ]),
+        models.CashTransaction.payment_method == models.PaymentMethod.CARD,
+        models.CashTransaction.timestamp >= start_date,
+        models.CashTransaction.timestamp <= end_date
+    ).group_by(models.Vehicle.country).all()
+    
+    # 5. Transferencia por país
+    transfer_query = db.query(
+        models.Vehicle.country,
+        func.count(models.CashTransaction.id).label('count')
+    ).join(models.Stay, models.Stay.id == models.CashTransaction.stay_id).join(
+        models.Vehicle, models.Vehicle.id == models.Stay.vehicle_id
+    ).filter(
+        models.CashTransaction.transaction_type.in_([
+            models.TransactionType.CHECKOUT,
+            models.TransactionType.PREPAYMENT
+        ]),
+        models.CashTransaction.payment_method == models.PaymentMethod.TRANSFER,
+        models.CashTransaction.timestamp >= start_date,
+        models.CashTransaction.timestamp <= end_date
+    ).group_by(models.Vehicle.country).all()
+    
+    # Formatear resultados
+    def format_results(query_results):
+        return [
+            {"country": r.country or "Unknown", "count": r.count}
+            for r in query_results
+        ]
+    
+    return {
+        "prepaid": format_results(prepaid_query),
+        "normal": format_results(normal_query),
+        "cash": format_results(cash_query),
+        "card": format_results(card_query),
+        "transfer": format_results(transfer_query)
     }
 # ============================================================================
 # FUNCIONES PARA SISTEMA DE CAJA
