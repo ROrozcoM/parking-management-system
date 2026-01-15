@@ -453,3 +453,103 @@ async def register_product_sale(
         "total_amount": total_amount,
         "payment_method": sale_data.payment_method.value
     }
+
+@router.get("/closed-sessions")
+async def get_closed_sessions(
+    limit: int = 30,
+    db: Session = Depends(get_db),
+    current_user: models.User = Depends(get_current_active_user)
+):
+    """Obtiene historial de cierres de caja (OPTIMIZADO)"""
+    from sqlalchemy import and_, func, case
+    from sqlalchemy.orm import aliased
+    
+    # Alias para los usuarios
+    OpenedBy = aliased(models.User)
+    ClosedBy = aliased(models.User)
+    
+    # Query única con JOINs y subqueries
+    query = db.query(
+        models.CashSession,
+        OpenedBy.username.label('opened_by_username'),
+        ClosedBy.username.label('closed_by_username'),
+        # Subquery para cash_in
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        and_(
+                            models.CashTransaction.cash_session_id == models.CashSession.id,
+                            models.CashTransaction.transaction_type.in_([
+                                models.TransactionType.CHECKOUT,
+                                models.TransactionType.PREPAYMENT,
+                                models.TransactionType.PRODUCT_SALE
+                            ]),
+                            models.CashTransaction.payment_method == models.PaymentMethod.CASH
+                        ),
+                        models.CashTransaction.amount_due
+                    ),
+                    else_=0
+                )
+            ),
+            0
+        ).label('total_cash_in'),
+        # Subquery para withdrawals
+        func.coalesce(
+            func.sum(
+                case(
+                    (
+                        and_(
+                            models.CashTransaction.cash_session_id == models.CashSession.id,
+                            models.CashTransaction.transaction_type == models.TransactionType.WITHDRAWAL
+                        ),
+                        models.CashTransaction.amount_due
+                    ),
+                    else_=0
+                )
+            ),
+            0
+        ).label('total_withdrawals')
+    ).outerjoin(
+        OpenedBy, models.CashSession.opened_by_user_id == OpenedBy.id
+    ).outerjoin(
+        ClosedBy, models.CashSession.closed_by_user_id == ClosedBy.id
+    ).outerjoin(
+        models.CashTransaction, models.CashTransaction.cash_session_id == models.CashSession.id
+    ).filter(
+        models.CashSession.closed_at.isnot(None)
+    ).group_by(
+        models.CashSession.id,
+        OpenedBy.username,
+        ClosedBy.username
+    ).order_by(
+        models.CashSession.closed_at.desc()
+    ).limit(limit).all()
+    
+    # Formatear resultado
+    result = []
+    for session, opened_by, closed_by, cash_in, withdrawals in query:
+        expected_amount = session.initial_amount + cash_in - withdrawals
+        cash_difference = (session.actual_cash or 0) - expected_amount
+        
+        result.append({
+            "id": session.id,
+            "opened_at": session.opened_at.isoformat(),
+            "closed_at": session.closed_at.isoformat(),
+            "opened_by": opened_by or "Unknown",
+            "closed_by": closed_by or "Unknown",
+            "initial_amount": session.initial_amount,
+            "total_cash_in": float(cash_in),
+            "total_withdrawals": float(withdrawals),
+            "expected_amount": expected_amount,
+            "final_cash_amount": session.actual_cash or 0,
+            "final_card_amount": session.actual_card or 0,
+            "final_transfer_amount": session.actual_transfer or 0,
+            "remaining_in_register": session.remaining_in_register or 0,
+            "cash_difference": cash_difference,
+            "total_difference": session.difference or 0,
+            "notes": session.notes,
+            "cash_breakdown": session.cash_breakdown or {}
+        })
+    
+    return result

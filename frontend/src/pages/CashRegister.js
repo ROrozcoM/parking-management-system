@@ -3,6 +3,7 @@ import { cashAPI } from '../services/api';
 import { Modal, Button, Form, Alert } from 'react-bootstrap';
 import { OpenCashModal, RegisterPendingModal, CloseCashModal, WithdrawalModal } from '../components/CashRegisterModals';
 import ProductSaleModal from '../components/ProductSaleModal';
+import CashHistoryModal from '../components/CashHistoryModal';
 
 
 function CashRegister() {
@@ -19,6 +20,7 @@ function CashRegister() {
   const [showRegisterModal, setShowRegisterModal] = useState(false);
   const [showWithdrawalModal, setShowWithdrawalModal] = useState(false);
   const [showProductSaleModal, setShowProductSaleModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [selectedPending, setSelectedPending] = useState(null);
 
   useEffect(() => {
@@ -208,6 +210,17 @@ function CashRegister() {
             >
               🔓 Abrir Caja
             </Button>
+
+            {/* Botón secundario - Historial */}
+            <div>
+              <Button 
+                variant="outline-secondary" 
+                size="sm"
+                onClick={() => setShowHistoryModal(true)}
+              >
+                📋 Ver Historial de Cierres
+              </Button>
+            </div>
           </div>
         </div>
 
@@ -216,6 +229,11 @@ function CashRegister() {
           onHide={() => setShowOpenModal(false)}
           onOpen={handleOpenSession}
           lastClosingAmount={lastClosingAmount}
+        />
+
+        <CashHistoryModal
+          show={showHistoryModal}
+          onHide={() => setShowHistoryModal(false)}
         />
       </div>
     );
@@ -278,6 +296,9 @@ function CashRegister() {
             </Button>
             <Button variant="warning" onClick={() => setShowWithdrawalModal(true)}>
               💸 Registrar Retiro
+            </Button>
+            <Button variant="info" onClick={() => setShowHistoryModal(true)}>
+            📋 Historial Cierres
             </Button>
             <Button variant="danger" onClick={() => setShowCloseModal(true)}>
               🔒 Cerrar Caja
@@ -428,6 +449,11 @@ function CashRegister() {
         show={showProductSaleModal}
         onHide={() => setShowProductSaleModal(false)}
         onSuccess={handleProductSaleSuccess}
+      />
+
+      <CashHistoryModal
+        show={showHistoryModal}
+        onHide={() => setShowHistoryModal(false)}
       />
     </div>
   );
