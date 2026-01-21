@@ -56,12 +56,24 @@ function CashHistoryModal({ show, onHide }) {
     return '✅';
   };
 
+  // Calcular total de retiros
+  const getTotalWithdrawals = () => {
+    return sessions.reduce((sum, s) => sum + (s.actual_withdrawal || 0), 0);
+  };
+
   return (
     <>
       {/* Modal principal - Tabla de historial */}
       <Modal show={show} onHide={onHide} size="xl" centered>
         <Modal.Header closeButton>
-          <Modal.Title>📋 Historial de Cierres de Caja</Modal.Title>
+          <Modal.Title>
+            📋 Historial de Cierres de Caja
+            {!loading && sessions.length > 0 && (
+              <Badge bg="success" className="ms-3">
+                💸 Total retirado: {getTotalWithdrawals().toFixed(2)} €
+              </Badge>
+            )}
+          </Modal.Title>
         </Modal.Header>
         <Modal.Body>
           {loading ? (
@@ -75,17 +87,17 @@ function CashHistoryModal({ show, onHide }) {
             <Alert variant="info">No hay cierres de caja registrados</Alert>
           ) : (
             <div style={{ maxHeight: '600px', overflowY: 'auto' }}>
-              <Table striped bordered hover responsive>
+              <Table striped bordered hover responsive size="sm">
                 <thead style={{ position: 'sticky', top: 0, backgroundColor: '#fff', zIndex: 1 }}>
                   <tr>
                     <th>Fecha Cierre</th>
                     <th>Usuario</th>
                     <th>Inicial</th>
                     <th>Ingresos</th>
-                    <th>Retiros</th>
                     <th>Esperado</th>
                     <th>Contado</th>
-                    <th>Quedó</th>
+                    <th className="table-warning">Retirado</th>
+                    <th className="table-success">Quedó</th>
                     <th>Descuadre</th>
                     <th>Detalles</th>
                   </tr>
@@ -104,13 +116,15 @@ function CashHistoryModal({ show, onHide }) {
                       <td>{session.closed_by}</td>
                       <td className="text-end">{session.initial_amount.toFixed(2)} €</td>
                       <td className="text-end text-success">+{session.total_cash_in.toFixed(2)} €</td>
-                      <td className="text-end text-danger">-{session.total_withdrawals.toFixed(2)} €</td>
                       <td className="text-end">
                         <strong>{session.expected_amount.toFixed(2)} €</strong>
                       </td>
                       <td className="text-end">{session.final_cash_amount.toFixed(2)} €</td>
-                      <td className="text-end text-primary">
-                        <strong>{session.remaining_in_register.toFixed(2)} €</strong>
+                      <td className="text-end table-warning">
+                        <strong className="text-danger">-{(session.actual_withdrawal || 0).toFixed(2)} €</strong>
+                      </td>
+                      <td className="text-end table-success">
+                        <strong className="text-success">{session.remaining_in_register.toFixed(2)} €</strong>
                       </td>
                       <td className="text-center">
                         <Badge bg={getDifferenceColor(session.cash_difference)}>
@@ -208,7 +222,7 @@ function DetailsModal({ show, onHide, session }) {
                 <td className="text-end">+{session.total_cash_in.toFixed(2)} €</td>
               </tr>
               <tr className="table-danger">
-                <td><strong>- Retiros:</strong></td>
+                <td><strong>- Retiros durante el día:</strong></td>
                 <td className="text-end">-{session.total_withdrawals.toFixed(2)} €</td>
               </tr>
               <tr className="table-primary">
@@ -304,17 +318,58 @@ function DetailsModal({ show, onHide, session }) {
           </Table>
         </div>
 
-        {/* Resumen Final */}
-        <div className="p-3 bg-primary bg-opacity-10 rounded">
-          <div className="d-flex justify-content-between mb-2">
-            <strong>💰 Quedó en caja:</strong>
-            <span className="fs-5 text-success">
-              <strong>{session.remaining_in_register.toFixed(2)} €</strong>
-            </span>
+        {/* SECCIÓN RETIRO DE CAJA - NUEVO */}
+        <div className="mb-4">
+          <h5 className="mb-3">💸 Retiro de Caja</h5>
+          <div className="p-3 bg-warning bg-opacity-10 rounded border border-warning">
+            <Table bordered size="sm" className="mb-0">
+              <tbody>
+                <tr>
+                  <td><strong>💸 Retirado:</strong></td>
+                  <td className="text-end">
+                    <strong className="text-danger fs-5">
+                      {(session.actual_withdrawal || 0).toFixed(2)} €
+                    </strong>
+                  </td>
+                </tr>
+                <tr className="table-success">
+                  <td><strong>💰 Quedó en caja:</strong></td>
+                  <td className="text-end">
+                    <strong className="text-success fs-5">
+                      {session.remaining_in_register.toFixed(2)} €
+                    </strong>
+                  </td>
+                </tr>
+              </tbody>
+            </Table>
+            <small className="text-muted d-block mt-2">
+              ℹ️ El importe que quedó en caja se usó como inicial para la siguiente sesión
+            </small>
           </div>
-          <small className="text-muted">
-            Este fue el importe que se usó como inicial para la siguiente sesión
-          </small>
+        </div>
+
+        {/* Resumen Total (opcional, para ver el cuadre general) */}
+        <div className="p-3 bg-info bg-opacity-10 rounded">
+          <h6 className="mb-2">📊 Resumen Total del Cierre:</h6>
+          <div className="d-flex justify-content-between mb-1">
+            <span>Efectivo contado:</span>
+            <span>{session.final_cash_amount.toFixed(2)} €</span>
+          </div>
+          <div className="d-flex justify-content-between mb-1">
+            <span>Tarjeta:</span>
+            <span>{session.final_card_amount.toFixed(2)} €</span>
+          </div>
+          <div className="d-flex justify-content-between mb-1">
+            <span>Transferencia:</span>
+            <span>{session.final_transfer_amount.toFixed(2)} €</span>
+          </div>
+          <hr className="my-2" />
+          <div className="d-flex justify-content-between">
+            <strong>Total general:</strong>
+            <strong className="fs-5">
+              {(session.final_cash_amount + session.final_card_amount + session.final_transfer_amount).toFixed(2)} €
+            </strong>
+          </div>
         </div>
       </Modal.Body>
       <Modal.Footer>

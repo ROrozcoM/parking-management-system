@@ -113,6 +113,10 @@ async def close_session(
     Cierra una sesión de caja con desglose completo de billetes y métodos.
     Envía email automático al cerrar.
     """
+    # ← AÑADIR ESTE PRINT
+    print(f"🔍 DEBUG - actual_withdrawal recibido: {close_data.actual_withdrawal}")
+    print(f"🔍 DEBUG - remaining_in_register recibido: {close_data.remaining_in_register}")
+
     try:
         session = crud.close_cash_session_with_breakdown(
             db=db,
@@ -545,6 +549,7 @@ async def get_closed_sessions(
             "final_cash_amount": session.actual_cash or 0,
             "final_card_amount": session.actual_card or 0,
             "final_transfer_amount": session.actual_transfer or 0,
+            "actual_withdrawal": session.actual_withdrawal or 0,  
             "remaining_in_register": session.remaining_in_register or 0,
             "cash_difference": cash_difference,
             "total_difference": session.difference or 0,
