@@ -1964,13 +1964,15 @@ def close_cash_session_with_breakdown(
     
     # Calcular esperado por método
     expected = calculate_expected_by_method(db, session_id)
-    
-    # Calcular total real
-    actual_final_amount = actual_cash + actual_card + actual_transfer
-    
-    # Calcular descuadres
+
+    # IMPORTANTE: expected_total es SOLO efectivo (lo físico en caja)
+    # Para que el descuadre sea coherente, actual_final_amount también debe ser solo efectivo
+    # Card y transfer se guardan por separado pero no afectan al "descuadre" de caja
+    actual_final_amount = actual_cash  # Solo efectivo, igual que expected_total
+
+    # Calcular descuadres (ambos comparan solo efectivo)
     total_difference = actual_final_amount - expected["expected_total"]
-    cash_difference = actual_cash - expected["expected_cash"]
+    cash_difference = actual_cash - expected["expected_cash"]  # Estos ahora serán iguales
     
     # Calcular retiro sugerido (esperado - 300€ de cambio)
     suggested_withdrawal = max(0, expected["expected_cash"] - 300.0)
