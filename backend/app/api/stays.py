@@ -638,8 +638,9 @@ async def delete_checkout(
     Elimina un checkout del historial.
     - Marca el stay como DISCARDED
     - Libera la plaza de parking
-    - Elimina la transacción de caja asociada (si existe)
-    - Registra la acción en history_logs
+    - Elimina TODAS las transacciones de caja asociadas (CHECKOUT, PREPAYMENT, etc.)
+    - Elimina los PendingTransfer asociados (pagos por transferencia pendientes)
+    - Registra la acción en history_logs con detalle de lo eliminado
     """
     stay = db.query(models.Stay).filter(models.Stay.id == stay_id).first()
     
@@ -670,18 +671,37 @@ async def delete_checkout(
         if spot:
             spot.is_occupied = False
     
-    # 3. ELIMINAR TRANSACCIÓN DE CAJA (si existe)
-    cash_transaction = db.query(models.CashTransaction).filter(
-        and_(
-            models.CashTransaction.stay_id == stay_id,
-            models.CashTransaction.transaction_type == models.TransactionType.CHECKOUT
-        )
-    ).first()
+    # 3. ELIMINAR TODAS LAS TRANSACCIONES DE CAJA asociadas al stay
+    # (pueden ser CHECKOUT, PREPAYMENT por extensiones, etc.)
+    cash_transactions = db.query(models.CashTransaction).filter(
+        models.CashTransaction.stay_id == stay_id
+    ).all()
+
+    deleted_transactions = []
+    for tx in cash_transactions:
+        deleted_transactions.append({
+            "id": tx.id,
+            "type": tx.transaction_type.value if tx.transaction_type else None,
+            "amount": tx.amount_due,
+            "payment_method": tx.payment_method.value if tx.payment_method else None
+        })
+        db.delete(tx)
+
+    # 4. ELIMINAR PENDING TRANSFERS asociados al stay (si el pago fue por transferencia)
+    pending_transfers = db.query(models.PendingTransfer).filter(
+        models.PendingTransfer.stay_id == stay_id
+    ).all()
+
+    deleted_pending = []
+    for pt in pending_transfers:
+        deleted_pending.append({
+            "id": pt.id,
+            "amount": pt.amount,
+            "confirmed": pt.confirmed
+        })
+        db.delete(pt)
     
-    if cash_transaction:
-        db.delete(cash_transaction)
-    
-    # 4. CREAR LOG EN HISTORY
+    # 5. CREAR LOG EN HISTORY
     history_log = models.HistoryLog(
         stay_id=stay_id,
         action="Checkout eliminado manualmente",
@@ -691,19 +711,23 @@ async def delete_checkout(
             "original_final_price": final_price,
             "original_check_out_time": check_out_time.isoformat() if check_out_time else None,
             "deleted_by": current_user.username,
-            "reason": "Eliminación manual desde History"
+            "reason": "Eliminación manual desde History",
+            "deleted_cash_transactions": deleted_transactions,
+            "deleted_pending_transfers": deleted_pending
         },
         user_id=current_user.id
     )
     db.add(history_log)
     
     db.commit()
-    
+
     return {
         "success": True,
         "message": f"Checkout eliminado correctamente para {license_plate}",
         "stay_id": stay_id,
-        "deleted_by": current_user.username
+        "deleted_by": current_user.username,
+        "deleted_cash_transactions": len(deleted_transactions),
+        "deleted_pending_transfers": len(deleted_pending)
     }
 
 @router.get("/recent-checkouts")
