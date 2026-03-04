@@ -159,7 +159,7 @@ def print_ticket(ticket_type: str, license_plate: str, check_in_time: str,
             ticket += b'- Efectivo: Dejar en el buzon\n'
             ticket += b'- Transferencia bancaria:\n'
             ticket += BOLD_ON
-            ticket += b'ES62 0182 2104 4902 0167 9208\n\n'
+            ticket += b'ES57 0049 0097 8826 1124 1151\n\n'
             ticket += BOLD_OFF
             ticket += b'--------------------------------\n\n'
             ticket += BOLD_ON
@@ -169,7 +169,7 @@ def print_ticket(ticket_type: str, license_plate: str, check_in_time: str,
             ticket += b'- Cash: Leave in mailbox\n'
             ticket += b'- Bank transfer:\n'
             ticket += BOLD_ON
-            ticket += b'ES62 0182 2104 4902 0167 9208\n\n'
+            ticket += b'ES57 0049 0097 8826 1124 1151\n\n'
             ticket += BOLD_OFF
         else:
             if ticket_type in ['checkout', 'extension'] and exit_formatted:
@@ -210,7 +210,7 @@ def print_ticket(ticket_type: str, license_plate: str, check_in_time: str,
             # ← NUEVO: CUENTA BANCARIA en prepago y extensión
             if ticket_type in ['prepayment', 'extension']:
                 ticket += BOLD_ON + b'CUENTA BANCARIA / BANK ACCOUNT:\n' + BOLD_OFF
-                ticket += b'ES62 0182 2104 4902 0167 9208\n'
+                ticket += b'ES57 0049 0097 8826 1124 1151\n'
                 ticket += b'================================\n\n'
         else:
             ticket += ALIGN_CENTER + b'================================\n\n'
