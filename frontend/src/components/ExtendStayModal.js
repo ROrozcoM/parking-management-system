@@ -23,7 +23,7 @@ function ExtendStayModal({ show, onHide, stay, onSuccess }) {
     const prices = {
       'A': 12,      // ← Antes 10
       'B': 14,      // ← Antes 12
-      'CB': 14,     // ← Antes 12
+      'CB': 18,     // ← Antes 12
       'C': 18,      // ← Antes 16
       'CPLUS': 36   // ← Antes 32
     };
