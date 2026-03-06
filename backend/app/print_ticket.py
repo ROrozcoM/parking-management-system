@@ -229,7 +229,7 @@ def print_ticket(ticket_type: str, license_plate: str, check_in_time: str,
         ticket += b'================================\n\n'
         
         # DATOS EMPRESA
-        ticket += BOLD_ON + b'Autocaravana Cordoba SLU\n' + BOLD_OFF
+        ticket += BOLD_ON + b'Autocaravanas Cordoba SLU\n' + BOLD_OFF
         ticket += b'CIF: B06952931\n'
         ticket += b'C/ Pintora Nuha Al Radi 14\n'
         ticket += b'Bloque 12, 4-1\n'
