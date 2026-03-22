@@ -2,7 +2,8 @@ version: '3.8'
 
 services:
   db:
-    image: postgres:15
+    image: postgres:15.15
+    restart: unless-stopped
     environment:
       POSTGRES_DB: parking_db
       POSTGRES_USER: autocaravanascordoba
@@ -19,6 +20,7 @@ services:
 
   backend:
     build: ./backend
+    restart: unless-stopped
     command: >
       bash -c "
       bash /app/setup_cron.sh &&
@@ -46,6 +48,7 @@ services:
 
   frontend:
     build: ./frontend
+    restart: unless-stopped
     volumes:
       - ./frontend:/app
       - /app/node_modules
